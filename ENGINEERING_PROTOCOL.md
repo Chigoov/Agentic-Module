@@ -29,14 +29,14 @@ Implementation without Architecture Review is prohibited.
 
 Every phase MUST execute:
 
-1.  Load Project Memory
-2.  Load ADR
-3.  Load Component Registry
-4.  Load Capability Registry
-5.  Load Build Registry
-6.  Load Health Registry
+1.  Load Project Memory (when it exists; see §13)
+2.  Load ADR (when `docs/adr/` exists)
+3.  Load Component Registry (when it exists)
+4.  Load Capability Registry (when it exists)
+5.  Load Build Registry (when it exists)
+6.  Load Health Registry (when it exists)
 7.  Review previous phase
-8.  Review Technical Debt
+8.  Review Technical Debt (when it exists)
 9.  Architecture Review
 10. Challenge Existing Design
 11. Risk Analysis
@@ -46,9 +46,16 @@ Every phase MUST execute:
 15. Self Tests
 16. Architecture Audit
 17. Documentation Update
-18. Registry Update
-19. Project Memory Update
+18. Registry Update (for registries that actually exist)
+19. Project Memory Update (when Project Memory exists)
 20. Stop
+
+> [!NOTE]
+> Steps 1–6 and 18–19 reference **optional** registries. As of the current
+> architecture these registries do **not** exist yet (see `SYSTEM_INDEX.md`
+> Level 3). A phase must NOT create or update a registry that is not a real
+> implemented artifact. When a registry is introduced as a validated data
+> contract, these steps become active again automatically.
 
 ## 4. PRE-IMPLEMENTATION GATE
 
@@ -123,9 +130,9 @@ Verify:
 -   Complexity acceptable
 -   Tests passed
 -   Documentation synchronized
--   Registries synchronized
--   Project Memory updated
--   ADR updated if required
+-   Registries synchronized (for registries that actually exist)
+-   Project Memory updated (when it exists)
+-   ADR updated if required (once `docs/adr/` exists)
 -   No critical regression
 
 ## 9. ARCHITECTURE AUDIT
@@ -144,7 +151,7 @@ Audit:
 
 ## 10. TECHNICAL DEBT POLICY
 
-Every debt item records:
+Every debt item records (when a Technical Debt ledger exists):
 
 -   ID
 -   Description
@@ -154,27 +161,42 @@ Every debt item records:
 -   Target Phase
 -   Status
 
+Until the ledger exists, record debt in `docs/` as a report, not as a
+registry entry.
+
 ## 11. ADR POLICY
 
 Every significant architectural decision requires an ADR.
 
 Never overwrite ADR history.
 
+ADR entries are created **once** `docs/adr/` is established. Until then,
+record decisions in the relevant phase report (`docs/LAPORAN_*.md`) and
+reference them there.
+
 ## 12. PROJECT MEMORY POLICY
 
 Project Memory is the operational summary of the project.
 
-Update it after every completed phase.
+Update it after every completed phase — **when Project Memory exists as a
+real artifact**. Until then, the `project.json` manifest inside each
+research project is the authoritative per-project memory, and phase
+reports in `docs/` are the authoritative project history.
 
 ## 13. REGISTRY POLICY
 
-Update after every phase:
+The following registries are **planned** but not yet implemented:
 
 -   Component Registry
 -   Capability Registry
 -   Build Registry
 -   Health Registry
--   Version information
+-   Technical Debt ledger
+-   Changelog
+
+A phase must introduce a registry only when the workflow genuinely needs
+it, and must implement it as a validated Pydantic contract (not a loose
+directory). Until introduced, do not claim these registries exist.
 
 ## 14. TESTING POLICY
 
@@ -197,28 +219,28 @@ A phase is DONE only when:
 -   Architecture reviewed
 -   Architecture audited
 -   Documentation updated
--   Registries updated
--   Project Memory updated
--   Technical debt recorded
+-   Registries updated (for registries that actually exist)
+-   Project Memory updated (when it exists)
+-   Technical debt recorded (in `docs/` until a ledger exists)
 -   Critical blockers resolved or documented
 
 ## 16. CONSTITUTIONAL ENGINEERING RULES
 
 Always prefer:
 
-Architecture \> Speed
+Architecture > Speed
 
-Evidence \> Assumption
+Evidence > Assumption
 
-Review \> Impulse
+Review > Impulse
 
-Modularity \> Convenience
+Modularity > Convenience
 
-Documentation \> Memory
+Documentation > Memory
 
-Maintainability \> Short-term Optimization
+Maintainability > Short-term Optimization
 
-Scientific Integrity \> Automation
+Scientific Integrity > Automation
 
 ## 17. STOP CONDITIONS
 

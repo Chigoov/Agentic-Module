@@ -11,11 +11,21 @@
 
 # PURPOSE
 
-SYSTEM_INDEX.md is the navigation layer of the Academic Research
-Operating System (AROS).
+SYSTEM_INDEX.md is the **navigation layer** of the project.
 
 It prevents unnecessary loading of every documentation file and
-establishes the authoritative source for each domain.
+establishes the authoritative source for each domain. It is a
+**reference / process document**, not a live infrastructure component.
+
+> [!NOTE]
+> **Reality check.** Earlier revisions of this file listed runtime
+> registries (PROJECT_MEMORY, BUILD_REGISTRY, COMPONENT_REGISTRY,
+> CAPABILITY_REGISTRY, HEALTH_REGISTRY, TECHNICAL_DEBT, CHANGELOG) and a
+> `docs/adr/` directory as if they existed. **They do not exist yet.**
+> Those artifacts will be introduced as real data contracts only when a
+> phase actually needs them (e.g. orchestration). Until then, this index
+> only references documents that are present in the repository. No
+> infrastructure is claimed that is not implemented.
 
 ------------------------------------------------------------------------
 
@@ -29,43 +39,54 @@ Always load first.
 
 ------------------------------------------------------------------------
 
-## Level 1 --- Core Identity
+## Level 1 --- Core Identity (Mandatory Spec Files)
+
+The six files below are the **canonical specification set**. They are the
+only documents validated as present by the system health check
+(`src/core/paths.py` → `SPEC_FILES`). Every engineering decision traces to
+one of them.
 
 ### 00_MASTER_INSTRUCTION.md
 
-Purpose: - System identity - Vision - Core objectives - Filesystem
-rules - High-level architecture - Global operating principles
+Purpose:
+- System identity
+- Vision
+- Core objectives
+- Filesystem rules
+- High-level architecture
+- Global operating principles
 
-Load when: - starting a new engineering session - system bootstrap -
-architectural planning
+Load when:
+- starting a new engineering session
+- system bootstrap
+- architectural planning
 
 ------------------------------------------------------------------------
 
 ### AGENT_CONSTITUTION.md
 
-Purpose: - Non-negotiable rules - Academic integrity - Evidence policy -
-Safety rules
+Purpose:
+- Non-negotiable rules
+- Academic integrity
+- Evidence policy
+- Safety rules
 
-Load when: - making engineering decisions - implementing research
-features - verifying outputs
-
-------------------------------------------------------------------------
-
-### ENGINEERING_PROTOCOL.md
-
-Purpose: - Mandatory engineering lifecycle - Architecture Review First -
-Pre/Post implementation gates - Definition of Done
-
-Load before implementing any feature.
+Load when:
+- making engineering decisions
+- implementing research features
+- verifying outputs
 
 ------------------------------------------------------------------------
-
-## Level 2 --- System Design
 
 ### ARCHITECTURE.md
 
-Purpose: - Layered architecture - Agents - Tools - Adapters -
-Workflows - Responsibilities
+Purpose:
+- Layered architecture
+- Agents
+- Tools
+- Adapters
+- Workflows
+- Responsibilities
 
 Load when changing architecture or adding components.
 
@@ -73,70 +94,82 @@ Load when changing architecture or adding components.
 
 ### SYSTEM_RULES.md
 
-Purpose: - Operational rules - Coding rules - Verification rules - Audit
-rules
+Purpose:
+- Operational rules
+- Coding rules
+- Verification rules
+- Audit rules
 
 ------------------------------------------------------------------------
 
 ### WORKFLOW.md
 
-Purpose: - Research lifecycle - Task state machine - Source state
-machine
+Purpose:
+- Research lifecycle
+- Task state machine
+- Source state machine
 
 ------------------------------------------------------------------------
 
 ### BUILD_PLAN.md
 
-Purpose: - Development roadmap - Phase sequencing - Deliverables
+Purpose:
+- Development roadmap
+- Phase sequencing
+- Deliverables
 
 ------------------------------------------------------------------------
 
-## Level 3 --- Runtime Knowledge
+## Level 2 --- Engineering Process (Reference / Supplementary)
 
-### PROJECT_MEMORY
+These documents govern *how* the system is built. They are not validated
+by the health check, but they are authoritative for process and
+documentation style.
 
-Current project status.
+### ENGINEERING_PROTOCOL.md
 
-### BUILD_REGISTRY
+Purpose:
+- Mandatory engineering lifecycle
+- Architecture Review First
+- Pre/Post implementation gates
+- Definition of Done
 
-Phase history.
+Load before implementing any feature.
 
-### COMPONENT_REGISTRY
+------------------------------------------------------------------------
 
-Registered components.
+## Level 3 --- Runtime Knowledge (Planned, Not Yet Implemented)
 
-### CAPABILITY_REGISTRY
+The following runtime registries are **planned** but are implemented only
+when the phase that consumes them is built. They are **documented here as
+intent, not as existing artifacts.**
 
-Implemented capabilities.
+- Project Memory (project status summary)
+- Build Registry (phase history)
+- Component Registry (registered components)
+- Capability Registry (implemented capabilities)
+- Health Registry (system health)
+- Technical Debt (known debt ledger)
+- Changelog (version history)
+- `docs/adr/` (Architecture Decision Records)
 
-### HEALTH_REGISTRY
-
-System health.
-
-### TECHNICAL_DEBT
-
-Known debt.
-
-### CHANGELOG
-
-Version history.
-
-### docs/adr/
-
-Architecture Decision Records.
+> [!IMPORTANT]
+> Creating any of the above is **not** part of the current architecture
+> refactor. They will be introduced as real, validated Pydantic contracts
+> in a future phase only when a workflow genuinely needs them. Until then,
+> do not reference them as if they exist.
 
 ------------------------------------------------------------------------
 
 # BOOTSTRAP ORDER
 
 1.  SYSTEM_INDEX.md
-2.  PROJECT_MEMORY
-3.  AGENT_CONSTITUTION.md
-4.  ENGINEERING_PROTOCOL.md
-5.  00_MASTER_INSTRUCTION.md
-6.  ARCHITECTURE.md
-7.  Required registries
-8.  Load only task-specific documentation
+2.  AGENT_CONSTITUTION.md
+3.  ENGINEERING_PROTOCOL.md
+4.  00_MASTER_INSTRUCTION.md
+5.  ARCHITECTURE.md
+6.  Required spec documents (as needed)
+7.  Load only task-specific documentation
 
 Do not load every document unless necessary.
 
@@ -156,20 +189,6 @@ Need workflow? → WORKFLOW.md
 
 Need roadmap? → BUILD_PLAN.md
 
-Need project status? → PROJECT_MEMORY
-
-Need architecture history? → docs/adr/
-
-Need technical debt? → TECHNICAL_DEBT
-
-Need component status? → COMPONENT_REGISTRY
-
-Need capability status? → CAPABILITY_REGISTRY
-
-Need build history? → BUILD_REGISTRY
-
-Need system health? → HEALTH_REGISTRY
-
 ------------------------------------------------------------------------
 
 # SINGLE SOURCE OF TRUTH
@@ -188,10 +207,8 @@ document instead of copying content.
 Whenever architecture changes:
 
 1.  Update the authoritative document.
-2.  Update PROJECT_MEMORY if project state changes.
-3.  Update CHANGELOG.
-4.  Create or update ADR.
-5.  Update registries if affected.
+2.  Update CHANGELOG only if it exists (see Level 3 note).
+3.  Record significant decisions as ADR **only once** `docs/adr/` exists.
 
 Do not silently change documentation.
 
@@ -199,6 +216,6 @@ Do not silently change documentation.
 
 # FINAL PRINCIPLE
 
-SYSTEM_INDEX.md is the BIOS of the Academic Research Operating System.
+SYSTEM_INDEX.md is the navigation layer of AUTONOMI AGENTIC ILMIAH.
 
-Every engineering session begins here.
+Every engineering session begins here. It describes only what exists.
