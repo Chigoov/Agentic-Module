@@ -1,6 +1,5 @@
 # AUTONOMI AGENTIC ILMIAH — Phase 1 (Foundation) dependencies
-# Versions are pinned to the exact versions verified in this environment
-# (Python 3.14.5, Windows). See docs/PHASE_1_REPORT.md.
+# Pinned to the versions verified in this environment. See pyproject.toml.
 
 pydantic==2.13.4
 PyYAML==6.0.3
