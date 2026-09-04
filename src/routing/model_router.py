@@ -1,16 +1,26 @@
-"""Model router and LLM capability definitions (stub).
+"""Model router and LLM capability definitions (Phase 1 stub).
 
 Specification anchors:
-  * ARCHITECTURE.md §3 — "ModelRouter dispatches to the appropriate model based
-    on capability requirements."
-  * config/system.yaml — model_routing section with provider configs.
+  * ARCHITECTURE.md §6 — ``ModelRouter`` belongs at the provider/routing
+    layer, not inside agent business logic or the research-tools layer.
+  * config/system.yaml — ``model_routing`` section with provider configs.
 
 The model router is how agents abstract away "which LLM" and instead request
-capabilities (fast completion, structured output, long context, etc.). The
-router selects a configured provider/model that satisfies the requirement.
+capabilities. The router selects a configured provider/model that satisfies
+the requirement.
 
-Phase 1 creates the capability vocabulary and the interface. Phase 2 wires real
-providers (Claude, GPT, Gemini) once API keys are configured.
+Capabilities
+------------
+The enumeration below is the *operational* vocabulary the router dispatches
+on (``fast_completion``, ``long_context``, ``structured_output``,
+``reasoning``, ``embedding``). ``ARCHITECTURE.md`` §6 lists *conceptual*
+capabilities (``PLANNING``, ``RESEARCH``, ``REASONING``, ``WRITING``,
+``AUDITING``). These are bridged through ``config.model_routing.capability_map``
+(conceptual → operational), so the two vocabularies stay coherent without
+breaking this contract.
+
+Phase 1 creates the capability vocabulary and the interface. Phase 2 wires
+real providers (Claude, GPT, Gemini) once API keys are configured.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ from src.agents.base import AgentRequest, AgentResponse, BaseAgent
 from src.core.config import get_config
 from src.core.status import IntegrationStatus
 from src.tools.base import BaseTool, ToolRequest, ToolResponse
-from src.tools.model_router import ModelCapability, ModelRequest, ModelResponse, ModelRouterTool
+from src.routing.model_router import ModelCapability, ModelRequest, ModelResponse, ModelRouterTool
 from src.tools.publish_or_perish import PublishOrPerishRequest, PublishOrPerishResponse, PublishOrPerishTool
 
 
