@@ -22,6 +22,7 @@ __all__ = [
     "ENV_WORKSPACE_ROOT",
     "ENV_SYSTEM_ROOT",
     "SPEC_FILES",
+    "SUPPLEMENTARY_DOCS",
     "PathResolutionError",
     "SystemPaths",
     "get_paths",
@@ -35,6 +36,7 @@ ENV_WORKSPACE_ROOT = "AUTONOMI_WORKSPACE_ROOT"
 ENV_SYSTEM_ROOT = "AUTONOMI_SYSTEM_ROOT"
 
 #: Mandatory specification documents that must remain present in SYSTEM_ROOT.
+#: These are the canonical spec set validated by the health check.
 SPEC_FILES: tuple[str, ...] = (
     "00_MASTER_INSTRUCTION.md",
     "AGENT_CONSTITUTION.md",
@@ -44,8 +46,19 @@ SPEC_FILES: tuple[str, ...] = (
     "BUILD_PLAN.md",
 )
 
+#: Supplementary/process documents that belong in SYSTEM_ROOT but are not part
+#: of the canonical spec set. The health check reports their presence but does
+#: not treat their absence as a spec failure.
+SUPPLEMENTARY_DOCS: tuple[str, ...] = (
+    "SYSTEM_INDEX.md",
+    "ENGINEERING_PROTOCOL.md",
+    "README.md",
+)
+
 #: Directories that hold generated state and may be created at runtime.
-_STORAGE_DIRS: tuple[str, ...] = ("config", "database", "cache", "logs", "runtime")
+#: ``runtime`` was renamed to ``state`` during the architecture refactor
+#: (audit finding M1): "runtime" now refers to *code*, not storage.
+_STORAGE_DIRS: tuple[str, ...] = ("config", "database", "cache", "state", "logs")
 
 
 class PathResolutionError(RuntimeError):
@@ -152,8 +165,14 @@ class SystemPaths:
         return self.system_root / "logs"
 
     @property
+    def state_dir(self) -> Path:
+        """Generated-state directory (renamed from ``runtime`` during refactor M1)."""
+        return self.system_root / "state"
+
+    @property
     def runtime_dir(self) -> Path:
-        return self.system_root / "runtime"
+        """Backward-compatible alias for :attr:`state_dir`."""
+        return self.state_dir
 
     @property
     def system_config_file(self) -> Path:
@@ -166,7 +185,7 @@ class SystemPaths:
     @property
     def project_index_file(self) -> Path:
         """Registry of every project created by the system."""
-        return self.runtime_dir / "project_index.json"
+        return self.state_dir / "project_index.json"
 
     # ---------------------------------------------------------------- helpers
     def spec_file(self, filename: str) -> Path:
@@ -176,6 +195,10 @@ class SystemPaths:
 
     def missing_spec_files(self) -> list[str]:
         return [name for name in SPEC_FILES if not (self.system_root / name).is_file()]
+
+    def missing_supplementary_docs(self) -> list[str]:
+        """Advisory: supplementary docs missing from SYSTEM_ROOT (never a spec failure)."""
+        return [name for name in SUPPLEMENTARY_DOCS if not (self.system_root / name).is_file()]
 
     def project_workspaces(self) -> list[Path]:
         """Project workspaces (e.g. ``TUGAS 1``) — every workspace dir except SYSTEM_ROOT."""
@@ -245,6 +268,7 @@ class SystemPaths:
             "database_dir": str(self.database_dir),
             "cache_dir": str(self.cache_dir),
             "logs_dir": str(self.logs_dir),
+            "state_dir": str(self.state_dir),
             "runtime_dir": str(self.runtime_dir),
             "docs_dir": str(self.docs_dir),
             "tests_dir": str(self.tests_dir),

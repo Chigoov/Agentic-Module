@@ -6,11 +6,12 @@ __pycache__/
 *.egg-info/
 
 # --- runtime storage (generated, not source) ---
-logs/
-cache/
-runtime/
-database/*.db
-database/*.sqlite3
+/logs/
+/cache/
+/state/
+/runtime/  # deprecated alias kept during transition; use state/
+/database/*.db
+/database/*.sqlite3
 
 # --- secrets ---
 .env
