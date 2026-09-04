@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomi-agentic-ilmiah"
+version = "1.0.0"
+description = "Evidence-controlled autonomous academic research workflow engine (system root: DATA BASE)."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic==2.13.4",
+    "PyYAML==6.0.3",
+    "python-dotenv==1.2.2",
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+# The system is executed in-place from SYSTEM_ROOT (DATA BASE/); packaging is
+# declared for metadata/tooling completeness only.
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers -m \"not integration\""
+markers = [
+    "integration: requires an external capability (network, Publish or Perish, model provider)",
+]

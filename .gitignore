@@ -1,0 +1,20 @@
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# --- runtime storage (generated, not source) ---
+logs/
+cache/
+runtime/
+database/*.db
+database/*.sqlite3
+
+# --- secrets ---
+.env
+*.key
+
+# Keep directory placeholders
+!**/.gitkeep

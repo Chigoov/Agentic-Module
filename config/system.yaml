@@ -1,0 +1,96 @@
+# AUTONOMI AGENTIC ILMIAH — system configuration
+# Spec: 00_MASTER_INSTRUCTION.md v1.0
+#
+# Every value here can be overridden by environment variables using the
+# prefix AUTONOMI__ and "__" as the nesting separator, e.g.:
+#   AUTONOMI__LOGGING__LEVEL=DEBUG
+#   AUTONOMI__TOOLS__PUBLISH_OR_PERISH__EXECUTABLE_PATH="D:/PoP/pop8.exe"
+
+system:
+  name: AUTONOMI AGENTIC ILMIAH
+  spec_version: "1.0"
+  build_phase: 3
+
+logging:
+  level: INFO
+  format: json          # json | text
+  console: true
+  file: true
+  filename: system.log
+  max_bytes: 5242880    # 5 MiB
+  backup_count: 5
+
+research:
+  # Validation level C (00_MASTER_INSTRUCTION.md §10)
+  validation_level: C
+  # DEFAULT PENDING USER CONFIRMATION (open question #4 of the implementation plan)
+  default_citation_style: APA7
+  default_language: id
+  recent_year_window: 10
+  allow_foundational_sources: true
+  min_sources_per_important_claim: 2
+  max_discovery_retries: 3
+  max_verification_retries: 3
+
+projects:
+  # Project artifacts live in workspace project folders, never in SYSTEM_ROOT.
+  default_workspace: TUGAS 1
+  allow_workspace_creation: false
+
+model_routing:
+  # Phase 2 territory. Nothing is wired yet, so the router refuses to invent
+  # completions (AGENT_CONSTITUTION.md §24).
+  status: PENDING_CONFIGURATION
+  provider: null
+  router_base_url: null
+  api_key_env: null
+  capability_map: {}    # e.g. { WRITING: "provider:model" }
+
+tools:
+  publish_or_perish:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    # Detected in Phase 0/Phase 2 discovery. Stored centrally here rather than
+    # hardcoded in source. The CLI executable is pop8query.exe (pop8.exe is the GUI).
+    # A path is only trusted after it is confirmed to exist on disk by the adapter.
+    executable_path: "C:/Program Files/Harzing's Publish or Perish 8/pop8query.exe"
+    install_dir: "C:/Program Files/Harzing's Publish or Perish 8"
+    # Fallback install roots probed only when executable_path/install_dir are unset.
+    # Moved out of source code (audit finding A1: no hardcoded paths in source).
+    search_dirs:
+      - "C:/Program Files/Harzing's Publish or Perish 8"
+      - "C:/Program Files (x86)/Harzing's Publish or Perish 8"
+    integration_verified: false
+    timeout_seconds: 120
+  crossref:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: https://api.crossref.org
+    api_key_env: null
+    contact_email_env: CROSSREF_CONTACT_EMAIL
+    timeout_seconds: 30
+  openalex:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: https://api.openalex.org
+    api_key_env: null
+    contact_email_env: OPENALEX_CONTACT_EMAIL
+    timeout_seconds: 30
+  semantic_scholar:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: https://api.semanticscholar.org
+    api_key_env: SEMANTIC_SCHOLAR_API_KEY
+    timeout_seconds: 30
+  pubmed:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+    api_key_env: PUBMED_API_KEY
+    timeout_seconds: 30
+  web_search:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: null
+    api_key_env: null
+    timeout_seconds: 30
