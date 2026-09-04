@@ -25,4 +25,8 @@ __all__ = [
     "Priority",
     "ContextBudget",
     "DEFAULT_BUDGETS",
+    "build_candidate_pool",
+    "run_dry_run",
+    "format_report",
+    "main",
 ]

@@ -159,6 +159,7 @@ class ContextLoader:
         candidates: Sequence[ContextDocument] | None = None,
         task_target: str | None = None,
         budget: int | None = None,
+        exclude_p4: bool = True,
     ) -> ContextManifest:
         """Produce the minimum context set + manifest.
 
@@ -169,7 +170,9 @@ class ContextLoader:
            small mandatory docs always land first.
         3. Greedily include documents whose estimated tokens fit the budget,
            never dropping P0.
-        4. Build the manifest recording selected/skipped + reasoning.
+        4. P4 documents are excluded by default (since they must not be loaded
+           unless explicitly required); pass ``exclude_p4=False`` to allow them.
+        5. Build the manifest recording selected/skipped + reasoning.
         """
         effective_budget = budget if budget is not None else self._budget
         pool = list(candidates) if candidates is not None else (self._default_candidates or [])
@@ -188,6 +191,18 @@ class ContextLoader:
                 continue
             seen.add(doc.name)
             tokens = self._estimate(doc)
+            # P4 = "do not load unless explicitly required" (Task 7). Exclude by default.
+            if exclude_p4 and doc.priority is Priority.P4:
+                skipped.append(
+                    ManifestEntry(
+                        name=doc.name,
+                        priority=doc.priority,
+                        selected=False,
+                        tokens=tokens,
+                        reason="P4 priority: not loaded unless explicitly required.",
+                    )
+                )
+                continue
             # P0 is mandatory; always include. Others must fit the budget.
             if effective_budget is not None and doc.priority is not Priority.P0 and total + tokens > effective_budget:
                 over_budget = True
