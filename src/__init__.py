@@ -5,6 +5,7 @@ See ``00_MASTER_INSTRUCTION.md`` for the authoritative specification.
 
 Layering (SYSTEM_RULES.md §B):
     core        deterministic infrastructure (paths, config, logging, storage)
+    context     deterministic context selection/priority (minimal LLM context)
     schemas     machine-readable data contracts
     tools       external capabilities + provider adapters
     agents      reasoning components
