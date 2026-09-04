@@ -30,7 +30,11 @@ def test_system_paths_properties_exist() -> None:
     assert isinstance(paths.database_dir, Path)
     assert isinstance(paths.logs_dir, Path)
     assert isinstance(paths.cache_dir, Path)
+    assert isinstance(paths.state_dir, Path)
     assert isinstance(paths.runtime_dir, Path)
+    # runtime_dir is a backward-compatible alias for state_dir (M1).
+    assert paths.runtime_dir == paths.state_dir
+    assert isinstance(paths.prompts_dir, Path)
     assert isinstance(paths.system_config_file, Path)
 
 

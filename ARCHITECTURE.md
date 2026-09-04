@@ -61,7 +61,7 @@ System constitution and operational policies.
 Environment and research configuration.
 
 ### Storage
-Artifacts, logs, cache, runtime metadata, and databases.
+Artifacts, logs, cache, state metadata, and databases.
 
 ---
 
@@ -87,7 +87,7 @@ DATA BASE/
 ├── config/
 ├── app/
 ├── database/
-├── runtime/
+├── state/
 ├── cache/
 ├── logs/
 ├── tests/
@@ -191,7 +191,7 @@ GPT
 Gemini
 others
 
-9Router is an optional routing/provider layer and must not leak into business logic.
+ModelRouter is an optional routing/provider layer and must not leak into business logic.
 
 ---
 
