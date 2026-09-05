@@ -33,6 +33,7 @@ __all__ = [
     "coerce_source_type",
     "coerce_year",
     "source_from_dict",
+    "best_title_match",
 ]
 
 #: DOI prefix forms that are stripped before comparison/storage.
@@ -272,3 +273,38 @@ def _coerce_int(value: Any) -> int | None:
         return int(str(value).strip())
     except (ValueError, TypeError):
         return None
+
+
+def _tokenize(text: str) -> set[str]:
+    return set(_WHITESPACE.split(normalize_title(text)))
+
+
+def best_title_match(candidate: str, candidates: Iterable[str]) -> tuple[str | None, float]:
+    """Return the best-matching title and its Jaccard similarity in ``[0.0, 1.0]``.
+
+    Deterministic and network-free. Used by the verification engine to decide
+    which provider record corroborates a candidate source's title. A returned
+    ratio of ``1.0`` means exact token equality after normalization; ``None`` is
+    returned (with ``0.0``) when there are no candidates.
+    """
+    if not candidate:
+        return None, 0.0
+    needle = _tokenize(candidate)
+    if not needle:
+        return None, 0.0
+
+    best_title: str | None = None
+    best_score = 0.0
+    for title in candidates:
+        if title is None:
+            continue
+        tokens = _tokenize(str(title))
+        if not tokens:
+            continue
+        intersection = len(needle & tokens)
+        union = len(needle | tokens)
+        score = intersection / union if union else 0.0
+        if score > best_score:
+            best_score = score
+            best_title = str(title)
+    return best_title, best_score

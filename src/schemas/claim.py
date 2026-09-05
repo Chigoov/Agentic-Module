@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import IntEnum, StrEnum
 
-from pydantic import Field, computed_field
+from pydantic import Field
 
 from src.core.errors import StateTransitionError
 from src.schemas.base import BaseRecord
@@ -149,13 +149,11 @@ class Claim(BaseRecord):
             )
 
     # ------------------------------------------------------------------ views
-    @computed_field  # type: ignore[prop-decorator]
     @property
     def is_important(self) -> bool:
         """Important claims must be auditable (SYSTEM_RULES.md §F.38)."""
         return self.importance >= ClaimImportance.HIGH
 
-    @computed_field  # type: ignore[prop-decorator]
     @property
     def has_conflict(self) -> bool:
         return bool(self.supporting_evidence) and bool(self.contradicting_evidence)

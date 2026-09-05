@@ -38,6 +38,9 @@ __all__ = [
     "LoggingSection",
     "ResearchSection",
     "ProjectsSection",
+    "VerificationSection",
+    "EvidenceSection",
+    "WritingSection",
     "ModelRoutingSection",
     "ToolSection",
     "SystemConfig",
@@ -110,6 +113,47 @@ class ProjectsSection(_Section):
     allow_workspace_creation: bool = False
 
 
+class VerificationSection(_Section):
+    """Phase 4 verification-engine tuning.
+
+    ``metadata_match_threshold`` is the Jaccard title-similarity floor below which
+    a provider record is not considered to corroborate a candidate (finding: never
+    pass a metadata check without real corroboration).
+    """
+
+    metadata_match_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    min_metadata_providers: int = Field(default=1, ge=0)
+    enabled: bool = True
+
+
+class EvidenceSection(_Section):
+    """Phase 5 evidence/claim-engine tuning.
+
+    ``min_sources_per_important_claim`` mirrors ``ResearchSection`` but is scoped
+    to the evidence engine so the claim verdict and the research plan can be
+    tuned independently.
+    """
+
+    min_sources_per_important_claim: int = Field(default=2, ge=1)
+    max_evidence_per_claim: int = Field(default=20, ge=1)
+    require_verbatim_quotes: bool = True
+    enabled: bool = True
+
+
+class WritingSection(_Section):
+    """Phase 6 writing/synthesis engine tuning.
+
+    ``require_writable_claims`` is the hard gate: the writer only assembles prose
+    from claims that are writable (SUPPORTED / PARTIALLY_SUPPORTED / CONFLICTED).
+    ``require_citation_backing`` ensures every in-text pointer resolves to a
+    verified source (SYSTEM_RULES.md §E.39).
+    """
+
+    require_writable_claims: bool = True
+    require_citation_backing: bool = True
+    enabled: bool = True
+
+
 class ModelRoutingSection(_Section):
     """Phase 2 configuration. Deliberately inert until a provider is supplied."""
 
@@ -155,6 +199,9 @@ class SystemConfig(_Section):
     logging: LoggingSection = Field(default_factory=LoggingSection)
     research: ResearchSection = Field(default_factory=ResearchSection)
     projects: ProjectsSection = Field(default_factory=ProjectsSection)
+    verification: VerificationSection = Field(default_factory=VerificationSection)
+    evidence: EvidenceSection = Field(default_factory=EvidenceSection)
+    writing: WritingSection = Field(default_factory=WritingSection)
     model_routing: ModelRoutingSection = Field(default_factory=ModelRoutingSection)
     tools: dict[str, ToolSection] = Field(default_factory=dict)
 

@@ -7,4 +7,16 @@ plans multi-step actions, or routes work between tools.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from src.agents import (  # noqa: F401
+    claim_verification,
+    outline,
+    synthesis,
+    writer,
+)
+
+__all__: list[str] = [
+    "claim_verification",
+    "outline",
+    "synthesis",
+    "writer",
+]

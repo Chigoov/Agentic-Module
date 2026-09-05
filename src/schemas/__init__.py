@@ -7,4 +7,10 @@ inline inside agents — so that workflow boundaries stay stable across phases.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from src.schemas import (  # noqa: F401
+    citation,
+    outline,
+    synthesis,
+)
+
+__all__: list[str] = ["citation", "outline", "synthesis"]

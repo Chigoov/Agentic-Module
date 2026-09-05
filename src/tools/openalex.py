@@ -18,13 +18,14 @@ VERIFIED BEHAVIOUR (real HTTP response, 2026-09-03):
 
 from __future__ import annotations
 
+import urllib.parse
 from typing import Any, ClassVar
 
 from src.core.config import get_config
 from src.schemas.source import Source
 from src.tools.http_client import HttpClient
 from src.tools.research_tool import ResearchRequest, ResearchTool
-from src.tools.source_mapper import source_from_dict
+from src.tools.source_mapper import best_title_match, normalize_doi, source_from_dict
 
 __all__ = ["OpenAlexTool"]
 
@@ -114,3 +115,49 @@ class OpenAlexTool(ResearchTool):
         sources = [s for s in sources if s.title]
 
         return sources, len(items), result.url, result.text[:4000]
+
+    # --------------------------------------------------------------- lookups
+    def lookup_by_doi(self, doi: str) -> Source | None:
+        """Resolve a single work by DOI via ``/works/doi:{doi}``.
+
+        Returns ``None`` for a missing/malformed DOI or an empty/unusable record
+        (never fabricates a source).
+        """
+        normalized = normalize_doi(doi)
+        if not normalized:
+            return None
+        client = self._client()
+        url = f"{self._BASE_URL}/doi:{urllib.parse.quote(normalized, safe='')}"
+        result = client.get_json(url)
+        item = result.json()
+        if not isinstance(item, dict):
+            return None
+        source = self._item_to_source(item)
+        return source if source.title else None
+
+    def lookup_by_bibliographic(
+        self,
+        *,
+        title: str,
+        authors: list[str] | None = None,
+        year: int | None = None,
+    ) -> Source | None:
+        """Find the single best bibliographic match for a candidate record.
+
+        Searches by title (with an optional publication-year filter) and returns
+        the best title match, or ``None`` when nothing usable is returned.
+        """
+        request = ResearchRequest(
+            query=title,
+            year_start=year,
+            year_end=year,
+            max_results=10,
+        )
+        response = self._execute(request)
+        if not response.success or not response.results:
+            return None
+        best_title, _score = best_title_match(title, [s.title for s in response.results])
+        for source in response.results:
+            if source.title == best_title:
+                return source
+        return response.results[0]

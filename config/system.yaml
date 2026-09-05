@@ -9,7 +9,7 @@
 system:
   name: AUTONOMI AGENTIC ILMIAH
   spec_version: "1.0"
-  build_phase: 3
+  build_phase: 6
 
 logging:
   level: INFO
@@ -31,6 +31,31 @@ research:
   min_sources_per_important_claim: 2
   max_discovery_retries: 3
   max_verification_retries: 3
+
+verification:
+  # Phase 4 — source verification engine tuning.
+  enabled: true
+  # Jaccard title-similarity floor for a provider record to corroborate a
+  # candidate's title. Below this, metadata is NOT considered corroborated.
+  metadata_match_threshold: 0.6
+  # Minimum distinct providers required to mark the METADATA level PASSED.
+  min_metadata_providers: 1
+
+evidence:
+  # Phase 5 — evidence/claim engine tuning.
+  enabled: true
+  min_sources_per_important_claim: 2
+  max_evidence_per_claim: 20
+  require_verbatim_quotes: true
+
+writing:
+  # Phase 6 — synthesis/writing engine tuning.
+  enabled: true
+  # Hard gate: the writer assembles prose only from writable claims
+  # (SUPPORTED / PARTIALLY_SUPPORTED / CONFLICTED).
+  require_writable_claims: true
+  # Every in-text pointer must resolve to a verified source.
+  require_citation_backing: true
 
 projects:
   # Project artifacts live in workspace project folders, never in SYSTEM_ROOT.

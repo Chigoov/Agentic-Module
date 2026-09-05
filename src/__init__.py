@@ -23,6 +23,6 @@ SYSTEM_NAME = "AUTONOMI AGENTIC ILMIAH"
 SPEC_VERSION = "1.0"
 
 #: Highest BUILD_PLAN.md phase that is implemented and tested.
-BUILD_PHASE = 3
+BUILD_PHASE = 6
 
 __version__ = "1.0.0"

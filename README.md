@@ -87,7 +87,7 @@ Expected output:
    SYSTEM_ROOT: ...\DATA BASE
    WORKSPACE_ROOT: ...\AUTONOMI AGENTIC ILMIAH
    Spec version: 1.0
-   Build phase: 3
+   Build phase: 6
 ```
 
 Run the fast test suite:
@@ -107,8 +107,12 @@ python -m pytest tests/ -q
 | 2 — Model Routing (abstraction) | ✅ |
 | 2.1 — PoP integration | ✅ |
 | 3 — Research Tools | ✅ |
-| 4 — Verification Engine | ⬜ planned |
-| 5+ — Evidence/Claim, Synthesis, Audit, DOCX | ⬜ |
+| 4 — Verification Engine | ✅ |
+| 5 — Evidence/Claim Engine | ✅ |
+| 6 — Synthesis/Writing | ✅ |
+| 7 — Audit | ⬜ planned |
+| 8 — DOCX | ⬜ planned |
+| 9+ — Academic Writing, Deep Research, E2E | ⬜ planned |
 
 ---
 
