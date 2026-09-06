@@ -11,6 +11,7 @@ from typing import Any
 from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, TaskAnalyzerAgent, TaskAnalyzerRequest
 from src.core.paths import PathResolutionError, get_paths
 from src.runtime.bootstrap import bootstrap, health_check
+from src.runtime.monitor import serve
 from src.schemas.claim import Claim
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
@@ -109,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
     academic.add_argument("--input-json", required=True)
     academic.add_argument("--no-docx", action="store_true")
     academic.set_defaults(func=_cmd_run_academic)
+
+    monitor = sub.add_parser("monitor", help="Run localhost API and workflow monitor")
+    monitor.add_argument("--host", default="127.0.0.1")
+    monitor.add_argument("--port", type=int, default=8000)
+    monitor.set_defaults(func=lambda args: serve(args.host, args.port) or 0)
 
     parser.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
     return parser

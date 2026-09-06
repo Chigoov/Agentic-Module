@@ -10,7 +10,7 @@ system:
   name: AUTONOMI AGENTIC ILMIAH
   spec_version: "1.0"
   # Current completed roadmap phase.
-  build_phase: 17
+  build_phase: 18
 
 logging:
   level: INFO

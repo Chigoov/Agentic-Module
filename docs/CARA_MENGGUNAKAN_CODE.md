@@ -1,7 +1,7 @@
 # CARA MENGGUNAKAN CODE
 ## AUTONOMI AGENTIC ILMIAH
 
-Panduan ini menjelaskan cara menjalankan code yang sudah selesai sampai Fase 17.
+Panduan ini menjelaskan cara menjalankan code yang sudah selesai sampai Fase 18.
 
 ## 1. Masuk ke Folder Sistem
 
@@ -27,7 +27,7 @@ Hasil sehat akan menampilkan:
 
 ```text
 [OK] System health check passed
-Build phase: 17
+Build phase: 18
 ```
 
 ## 4. Jalankan Test
@@ -139,7 +139,29 @@ print(response.plan)
 print(response.docx_path)
 ```
 
-## 7. Output Utama
+## 7. Jalankan Monitor Localhost
+
+Monitor ini dipakai untuk melihat progress workflow dari browser, sekaligus
+memberi endpoint lokal yang bisa dipanggil oleh AI agent lain.
+
+```powershell
+python -m src monitor --port 8000
+```
+
+Buka:
+
+```text
+http://127.0.0.1:8000
+```
+
+Endpoint yang tersedia:
+
+- `GET /api/progress`
+- `GET /api/check`
+- `GET /api/plan?topic=topik%20riset`
+- `POST /api/run-academic`
+
+## 8. Output Utama
 
 Output workflow disimpan di folder project, misalnya:
 
@@ -150,16 +172,16 @@ Output workflow disimpan di folder project, misalnya:
 - `e2e_validation.json`
 - `optimization_report.json`
 
-## 8. Catatan Penting
+## 9. Catatan Penting
 
 - Sistem tidak akan membuat sumber, DOI, kutipan, atau nomor halaman palsu.
 - DOCX hanya dibuat kalau citation audit dan fact audit lulus.
 - Model provider nyata belum otomatis aktif. Jika provider/model belum
   dikonfigurasi, routing akan gagal secara aman dan tercatat di telemetry.
-- Untuk pemakaian sehari-hari yang nyaman, langkah berikutnya adalah membuat
-  CLI sederhana di atas workflow ini.
+- Monitor localhost hanya menerima koneksi lokal secara default:
+  `127.0.0.1`.
 
-## 9. Cara Pakai Lewat CLI
+## 10. Cara Pakai Lewat CLI
 
 Buat rencana:
 

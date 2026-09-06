@@ -23,6 +23,6 @@ SYSTEM_NAME = "AUTONOMI AGENTIC ILMIAH"
 SPEC_VERSION = "1.0"
 
 #: Current completed roadmap phase.
-BUILD_PHASE = 17
+BUILD_PHASE = 18
 
 __version__ = "1.0.0"

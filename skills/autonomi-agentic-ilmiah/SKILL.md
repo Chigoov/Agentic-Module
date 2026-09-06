@@ -30,6 +30,19 @@ Run Academic Writing Mode from JSON:
 python -m src run-academic --input-json input.json
 ```
 
+Run the local workflow monitor/API:
+
+```powershell
+python -m src monitor --port 8000
+```
+
+Open `http://127.0.0.1:8000` to watch progress. AI agents can call:
+
+- `GET /api/progress`
+- `GET /api/check`
+- `GET /api/plan?topic=topik%20riset`
+- `POST /api/run-academic`
+
 ## Workflow
 
 1. Run `python -m src check` before using the project.
@@ -37,6 +50,7 @@ python -m src run-academic --input-json input.json
 3. Prepare JSON with real `sources`, `claims`, `evidence`, and `outline`.
 4. Run `run-academic`.
 5. Verify `success`, `draft_path`, `docx_path`, `citation_audit.json`, and `fact_audit.json`.
+6. Use `monitor` when a browser dashboard or localhost API is needed.
 
 For the input shape, read [references/input-json.md](references/input-json.md).
 

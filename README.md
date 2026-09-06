@@ -87,11 +87,11 @@ Expected output:
    SYSTEM_ROOT: ...\DATA BASE
    WORKSPACE_ROOT: ...\AUTONOMI AGENTIC ILMIAH
    Spec version: 1.0
-   Build phase: 17
+   Build phase: 18
 ```
 
-`Build phase: 17` means the current roadmap has completed the optimization
-reporting pass in `BUILD_PLAN.md`.
+`Build phase: 18` means the current roadmap has completed the local API and
+workflow monitor pass in `BUILD_PLAN.md`.
 
 Run the fast test suite:
 
@@ -111,6 +111,14 @@ Run Academic Writing Mode from a JSON payload:
 python -m src run-academic --input-json input.json
 ```
 
+Run the local workflow monitor:
+
+```bash
+python -m src monitor --port 8000
+```
+
+Then open `http://127.0.0.1:8000`.
+
 For sharing and AI-agent usage, see `docs/CARA_MEMBAGIKAN_PROJECT.md` and
 `skills/autonomi-agentic-ilmiah/SKILL.md`.
 
@@ -122,7 +130,8 @@ See `BUILD_PLAN.md` for the current roadmap. Completed code includes
 Discovery/Foundation, PoP + research discovery tools, Context Intelligence,
 Verification, Evidence/Claim, Retrieval, Research Agents, Orchestrator,
 Model Routing telemetry, Synthesis/Outline, Writing, Audit, DOCX generation,
-Academic Writing Mode, Deep Research Mode, End-to-End Validation, and Optimization.
+Academic Writing Mode, Deep Research Mode, End-to-End Validation, Optimization,
+and a local workflow monitor.
 
 ---
 

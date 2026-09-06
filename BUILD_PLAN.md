@@ -43,11 +43,12 @@ The system is built incrementally.
 | 15 | Deep Research Mode | Aktifkan multi-query, multi-source, dedup, deeper verification, full-text, conflict handling, synthesis mendalam. | End-to-end Deep Research workflow. | ✅ SELESAI |
 | 16 | End-to-End Validation | Uji seluruh sistem dengan kasus nyata (sederhana, teori klasik, literatur terbaru, DOI palsu, evidence bertentangan). | E2E test reports, failure-case evidence, readiness decision. | ✅ SELESAI |
 | 17 | Optimization | Optimalkan token, context, model routing, caching, concurrency, search efficiency, reliability, cost. | Performance metrics, token telemetry, routing/budget tuning, optimization report. | ✅ SELESAI |
+| 18 | Localhost API + Monitor | Sediakan server lokal agar workflow bisa dipanggil dari browser/AI agent dan progress terlihat real-time. | `python -m src monitor`, endpoint API lokal, progress log, dashboard animasi. | ✅ SELESAI |
 
 > [!NOTE]
 > **Penomoran ulang.** Synthesis/Writing dulu bernomor 6 (lama) kini 10–11; Audit dulu 7 kini 12; DOCX dulu 8 kini 13. Fase 6–9 (Retrieval, Agents, Orchestrator, Model Routing) adalah fase **baru** yang sebelumnya tidak eksplisit.
 >
-> **Urutan sudah diselaraskan.** Fase 7–17 sekarang SELESAI dalam scope minimal yang sudah diuji.
+> **Urutan sudah diselaraskan.** Fase 7–18 sekarang SELESAI dalam scope minimal yang sudah diuji.
 
 ---
 

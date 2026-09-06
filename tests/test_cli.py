@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.runtime.cli import main
+from src.runtime.cli import build_parser, main
 from src.schemas.claim import Claim, ClaimStatus, SupportLevel
 from src.schemas.evidence import Evidence, EvidenceLocation
 from src.schemas.outline import Outline, OutlineSection
@@ -22,6 +22,12 @@ def test_cli_plan_outputs_json(capsys) -> None:
 
 def test_cli_check_passes() -> None:
     assert main(["check"]) == 0
+
+
+def test_cli_monitor_parser_accepts_host_and_port() -> None:
+    args = build_parser().parse_args(["monitor", "--host", "127.0.0.1", "--port", "0"])
+    assert args.command == "monitor"
+    assert args.port == 0
 
 
 def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys) -> None:

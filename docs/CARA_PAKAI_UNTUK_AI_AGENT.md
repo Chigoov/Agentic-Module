@@ -17,9 +17,25 @@ cd "C:\Users\HYPE AMD\Downloads\VIBE CODING\AUTONOMI AGENTIC ILMIAH\DATA BASE"
 python -m src check
 python -m src plan "topik riset"
 python -m src run-academic --input-json input.json
+python -m src monitor --port 8000
 ```
 
 `python -m src --check` tetap didukung untuk kompatibilitas lama.
+
+## Localhost API
+
+Jalankan server:
+
+```powershell
+python -m src monitor --port 8000
+```
+
+Panggil endpoint lokal:
+
+- `GET http://127.0.0.1:8000/api/progress`
+- `GET http://127.0.0.1:8000/api/check`
+- `GET http://127.0.0.1:8000/api/plan?topic=topik%20riset`
+- `POST http://127.0.0.1:8000/api/run-academic`
 
 ## Format Kerja
 
