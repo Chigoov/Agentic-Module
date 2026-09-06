@@ -30,6 +30,18 @@ python -m src check
 python -m src plan "topik riset"
 ```
 
+Untuk pengguna Windows yang awam, cukup double-click:
+
+```text
+START_MONITOR.bat
+```
+
+Lalu buka:
+
+```text
+http://127.0.0.1:8000
+```
+
 ## Untuk AI Agent
 
 AI agent dapat membaca:
@@ -63,6 +75,12 @@ $autonomi-agentic-ilmiah
 Untuk tahap sekarang, bagikan lewat GitHub + skill folder. PyPI/package install
 belum wajib sampai project ini benar-benar perlu dipakai banyak orang dari
 command `pip install`.
+
+Panduan paling pendek untuk pengguna awam ada di:
+
+```text
+docs/CARA_CEPAT_UNTUK_ORANG_AWAM.md
+```
 
 ## Sebagai Codex Plugin Lokal
 

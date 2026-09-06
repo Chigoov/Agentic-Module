@@ -119,8 +119,14 @@ python -m src monitor --port 8000
 
 Then open `http://127.0.0.1:8000`.
 
+On Windows, non-technical users can double-click:
+
+```text
+START_MONITOR.bat
+```
+
 For sharing and AI-agent usage, see `docs/CARA_MEMBAGIKAN_PROJECT.md` and
-`skills/autonomi-agentic-ilmiah/SKILL.md`.
+`docs/CARA_CEPAT_UNTUK_ORANG_AWAM.md`.
 
 ---
 
