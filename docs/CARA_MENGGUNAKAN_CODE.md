@@ -144,6 +144,14 @@ print(response.docx_path)
 Monitor ini dipakai untuk melihat progress workflow dari browser, sekaligus
 memberi endpoint lokal yang bisa dipanggil oleh AI agent lain.
 
+Cara paling mudah di Windows:
+
+```text
+OPEN_LIVE_PROGRESS.bat
+```
+
+File itu akan membuka PowerShell server jika belum aktif, lalu membuka browser.
+
 ```powershell
 python -m src monitor --port 8000
 ```

@@ -122,8 +122,11 @@ Then open `http://127.0.0.1:8000`.
 On Windows, non-technical users can double-click:
 
 ```text
-START_MONITOR.bat
+OPEN_LIVE_PROGRESS.bat
 ```
+
+`START_MONITOR.bat` is also available when the user wants the server to run in
+the same terminal window.
 
 For sharing and AI-agent usage, see `docs/CARA_MEMBAGIKAN_PROJECT.md` and
 `docs/CARA_CEPAT_UNTUK_ORANG_AWAM.md`.

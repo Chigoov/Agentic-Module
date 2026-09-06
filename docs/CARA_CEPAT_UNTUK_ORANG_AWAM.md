@@ -6,6 +6,15 @@
 Double-click file ini:
 
 ```text
+OPEN_LIVE_PROGRESS.bat
+```
+
+File itu akan membuka PowerShell untuk menjalankan server, lalu membuka
+dashboard di browser.
+
+Jika ingin menjalankan monitor di jendela yang sama, double-click:
+
+```text
 START_MONITOR.bat
 ```
 
@@ -15,7 +24,7 @@ Lalu buka:
 http://127.0.0.1:8000
 ```
 
-Jangan tutup jendela hitam/CMD selama monitor masih dipakai.
+Jangan tutup jendela PowerShell/CMD selama monitor masih dipakai.
 
 ## 2. Memanggil Plugin di Codex
 
@@ -56,7 +65,13 @@ Jalankan check, lalu kerjakan tugas saya:
 
 ## 5. Untuk Melihat Progress
 
-Buka dashboard:
+Double-click:
+
+```text
+OPEN_LIVE_PROGRESS.bat
+```
+
+Atau buka dashboard:
 
 ```text
 http://127.0.0.1:8000
@@ -66,7 +81,7 @@ Progress akan muncul setelah sistem menjalankan `check`, `plan`, atau workflow.
 
 ## 6. Cara Menghentikan
 
-Klik jendela CMD yang menjalankan monitor, lalu tekan:
+Klik jendela PowerShell/CMD yang menjalankan monitor, lalu tekan:
 
 ```text
 Ctrl + C

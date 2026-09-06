@@ -33,10 +33,11 @@ python -m src plan "topik riset"
 Untuk pengguna Windows yang awam, cukup double-click:
 
 ```text
-START_MONITOR.bat
+OPEN_LIVE_PROGRESS.bat
 ```
 
-Lalu buka:
+File itu akan membuka PowerShell dan browser otomatis. Jika browser tidak
+terbuka, buka manual:
 
 ```text
 http://127.0.0.1:8000

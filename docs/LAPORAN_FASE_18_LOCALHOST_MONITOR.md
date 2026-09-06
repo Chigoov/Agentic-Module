@@ -14,6 +14,10 @@ lain melalui endpoint `localhost`.
 - Menambahkan progress log append-only di `state/progress.jsonl`.
 - Menambahkan server stdlib Python melalui `python -m src monitor --port 8000`.
 - Menambahkan halaman monitor animasi di `http://127.0.0.1:8000`.
+- Menambahkan launcher awam `OPEN_LIVE_PROGRESS.bat` untuk membuka PowerShell
+  monitor dan browser otomatis.
+- Menambahkan helper `OPEN_LIVE_PROGRESS.ps1` agar launcher tidak membuka
+  server kedua jika port monitor sudah aktif.
 - Menambahkan endpoint:
   - `GET /api/progress`
   - `GET /api/check`
@@ -33,6 +37,9 @@ lain melalui endpoint `localhost`.
 - `src/runtime/progress.py`
 - `src/runtime/monitor.py`
 - `src/runtime/cli.py`
+- `OPEN_LIVE_PROGRESS.bat`
+- `OPEN_LIVE_PROGRESS.ps1`
+- `START_MONITOR.bat`
 - `tests/test_monitor.py`
 - `tests/test_cli.py`
 - `config/system.yaml`
@@ -48,6 +55,12 @@ lain melalui endpoint `localhost`.
 
 ```powershell
 python -m src monitor --port 8000
+```
+
+Atau double-click:
+
+```text
+OPEN_LIVE_PROGRESS.bat
 ```
 
 Buka:
