@@ -77,7 +77,7 @@ that no integration is falsely claimed as verified):
 
 ```bash
 # From DATA BASE/
-python -m src.runtime.bootstrap --check
+python -m src check
 ```
 
 Expected output:
@@ -97,6 +97,18 @@ Run the fast test suite:
 
 ```bash
 python -m pytest tests/ -q
+```
+
+Create a plan from a topic:
+
+```bash
+python -m src plan "your research topic"
+```
+
+Run Academic Writing Mode from a JSON payload:
+
+```bash
+python -m src run-academic --input-json input.json
 ```
 
 ---

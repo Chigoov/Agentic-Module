@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 
-from src.runtime.bootstrap import main
+from src.runtime.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

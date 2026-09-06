@@ -18,7 +18,7 @@ dependencies = [
 test = ["pytest==9.1.1"]
 
 [project.scripts]
-autonomi = "src.runtime.bootstrap:main"
+autonomi = "src.runtime.cli:main"
 
 # The system is executed in-place from SYSTEM_ROOT (DATA BASE/); packaging is
 # declared for metadata/tooling completeness only.

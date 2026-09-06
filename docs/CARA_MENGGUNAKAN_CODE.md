@@ -20,7 +20,7 @@ python -m pip install -r requirements.txt
 ## 3. Cek Sistem
 
 ```powershell
-python -m src --check
+python -m src check
 ```
 
 Hasil sehat akan menampilkan:
@@ -158,3 +158,19 @@ Output workflow disimpan di folder project, misalnya:
   dikonfigurasi, routing akan gagal secara aman dan tercatat di telemetry.
 - Untuk pemakaian sehari-hari yang nyaman, langkah berikutnya adalah membuat
   CLI sederhana di atas workflow ini.
+
+## 9. Cara Pakai Lewat CLI
+
+Buat rencana:
+
+```powershell
+python -m src plan "dampak perceraian orang tua terhadap remaja"
+```
+
+Jalankan Academic Writing Mode dari JSON:
+
+```powershell
+python -m src run-academic --input-json input.json
+```
+
+Panduan khusus AI agent ada di `docs/CARA_PAKAI_UNTUK_AI_AGENT.md`.
