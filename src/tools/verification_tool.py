@@ -8,9 +8,10 @@ Specification anchors:
 
 The engine turns a candidate :class:`~src.schemas.source.Source` into a
 :class:`~src.schemas.verification.VerificationReport` with granular, per-level
-results. Levels 1 (EXISTENCE) and 2 (METADATA) are implemented here; level 3
-(CONTENT) is deliberately a future phase and is always reported as ``UNVERIFIED``
-rather than optimistically passed.
+results. Levels 1 (EXISTENCE) and 2 (METADATA) are implemented here. Level 3
+(CONTENT) is handled by the retrieval/evidence pipeline, so this metadata
+verifier reports it as ``UNVERIFIED`` rather than pretending it inspected full
+text.
 
 A metadata check only ever ``PASSED`` after a *real* provider record
 corroborates the candidate's title above the configured similarity threshold —
@@ -185,12 +186,12 @@ class VerificationEngine:
             ))
 
     def _verify_content(self, source: Source, report: VerificationReport) -> None:
-        # Level 3 (CONTENT) is a future phase; never optimistically passed.
+        # Content verification lives in retrieval/evidence; never pass it here.
         report.add_check(self._check(
             name="content_extracted",
             level=VerificationLevel.CONTENT,
             status=VerificationCheckStatus.UNVERIFIED,
-            detail="Content/evidence extraction is not implemented yet (future phase)",
+            detail="Content/evidence extraction is handled by the retrieval/evidence pipeline",
         ))
 
     # -------------------------------------------------------------- lookups

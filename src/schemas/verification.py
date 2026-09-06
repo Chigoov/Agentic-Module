@@ -43,7 +43,7 @@ class VerificationLevel(StrEnum):
     EXISTENCE = "EXISTENCE"
     #: Level 2 — bibliographic metadata corroborated against ≥1 provider.
     METADATA = "METADATA"
-    #: Level 3 — content/evidence extracted from full text (future phase).
+    #: Level 3 — content/evidence extracted by the retrieval/evidence pipeline.
     CONTENT = "CONTENT"
 
 

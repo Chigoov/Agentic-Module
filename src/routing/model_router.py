@@ -115,22 +115,22 @@ class ModelResponse(ToolResponse):
 
 
 class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
-    """Model router that dispatches LLM calls by capability (Phase 1 stub).
+    """Model router that dispatches LLM calls by capability.
 
     Current implementation:
-        Returns PENDING_CONFIGURATION. The real router will be built in Phase 2
-        after API keys are supplied and provider clients are integrated.
+        Resolves configured capability mappings and fails explicitly when the
+        provider client is not present yet. Without provider credentials it
+        remains PENDING_CONFIGURATION.
 
     Notes
     -----
-    When implemented, this will:
+    A concrete provider client still needs to:
     1. Read ``config.model_routing`` to find which provider serves the
        requested capability.
     2. Check that the provider's API key is present and status is not DISABLED.
     3. Construct a provider-specific request (OpenAI, Anthropic, Google format).
     4. Invoke the provider client, applying retries and backoff.
-    5. Normalize the response into the unified :class:`ModelResponse` contract.
-    6. Log token usage for cost tracking.
+    5. Return the unified :class:`ModelResponse` contract.
     """
 
     response_model: ClassVar[type[ToolResponse]] = ModelResponse
