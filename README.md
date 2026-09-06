@@ -111,6 +111,9 @@ Run Academic Writing Mode from a JSON payload:
 python -m src run-academic --input-json input.json
 ```
 
+For sharing and AI-agent usage, see `docs/CARA_MEMBAGIKAN_PROJECT.md` and
+`skills/autonomi-agentic-ilmiah/SKILL.md`.
+
 ---
 
 ## Build Status
