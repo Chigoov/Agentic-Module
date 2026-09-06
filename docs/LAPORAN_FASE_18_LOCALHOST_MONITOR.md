@@ -13,7 +13,8 @@ lain melalui endpoint `localhost`.
 
 - Menambahkan progress log append-only di `state/progress.jsonl`.
 - Menambahkan server stdlib Python melalui `python -m src monitor --port 8000`.
-- Menambahkan halaman monitor animasi di `http://127.0.0.1:8000`.
+- Menambahkan halaman monitor animasi berbentuk flowchart di
+  `http://127.0.0.1:8000`.
 - Menambahkan launcher awam `OPEN_LIVE_PROGRESS.bat` untuk membuka PowerShell
   monitor dan browser otomatis.
 - Menambahkan helper `OPEN_LIVE_PROGRESS.ps1` agar launcher tidak membuka
@@ -31,6 +32,8 @@ lain melalui endpoint `localhost`.
 - Tidak ada dependency baru.
 - Monitor tidak mengarang sumber, DOI, kutipan, evidence, atau nomor halaman.
 - `run-academic` tetap melewati workflow dan audit yang sama.
+- Tampilan flowchart hanya visualisasi progress; hasil ilmiah tetap ditentukan
+  oleh workflow, evidence, dan audit.
 
 ## File Berubah
 

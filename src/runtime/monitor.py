@@ -23,71 +23,92 @@ __all__ = ["create_handler", "serve"]
 
 INDEX = """<!doctype html>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Autonomi Monitor</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#11110f;color:#f4f1e8;font:14px Segoe UI,Arial,sans-serif}
-main{max-width:1180px;margin:28px auto;padding:0 18px}
-header{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:22px}
-h1{font-size:24px;margin:0 0 4px}.sub,.time{color:#a8a29e}.pill{border:1px solid #3f3a34;padding:7px 10px;background:#191814}
-.flow{position:relative;display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:28px 42px;margin:20px 0 28px}
-.node{position:relative;min-height:96px;border:1px solid #3f3a34;background:#1b1a17;padding:14px;box-shadow:0 0 0 1px rgba(255,255,255,.02),0 14px 28px rgba(0,0,0,.22)}
-.node:after{content:"";position:absolute;top:47px;right:-43px;width:42px;height:2px;background:#48433b}
-.node:nth-child(5):after,.node:last-child:after{display:none}
-.node:nth-child(5){grid-column:5}.node:nth-child(6){grid-column:5}.node:nth-child(6):before{content:"";position:absolute;top:-29px;right:50%;width:2px;height:28px;background:#48433b}
-.node:nth-child(n+7):after{right:auto;left:-43px}.node:nth-child(n+7){direction:rtl}.node:nth-child(n+7)>*{direction:ltr}
-.icon{width:30px;height:30px;display:grid;place-items:center;margin-bottom:10px;background:#27231d;color:#f5c451;border:1px solid #51483a;font-size:17px}
-.title{font-weight:700}.meta{color:#b7b0a6;font-size:12px;margin-top:4px;text-transform:uppercase}.msg{color:#d8d2c7;font-size:12px;margin-top:8px;line-height:1.35}
-.node.running{border-color:#36c7b7;box-shadow:0 0 0 1px rgba(54,199,183,.25),0 0 28px rgba(54,199,183,.12)}
-.node.success{border-color:#65a765}.node.failed{border-color:#df685d}.node.running .icon{animation:beat 1.1s infinite;background:#18312e;color:#5eead4}
-.node.success .icon{background:#20301f;color:#86efac}.node.failed .icon{background:#3a1f1c;color:#fca5a5}
-.node.running:after,.node.success:after{background:linear-gradient(90deg,#36c7b7,#f5c451,#36c7b7);background-size:200% 100%;animation:line 1.4s linear infinite}
-.events{border-top:1px solid #302c27;padding-top:14px}.row{display:grid;grid-template-columns:110px 105px 1fr 190px;gap:12px;padding:10px 0;border-bottom:1px solid #26231f}.empty{color:#a8a29e;padding:18px 0}
-@keyframes beat{50%{transform:scale(1.08);box-shadow:0 0 0 8px rgba(54,199,183,.12)}}@keyframes line{to{background-position:-200% 0}}
-@media(max-width:820px){header{display:block}.flow{grid-template-columns:1fr;gap:14px}.node,.node:nth-child(5),.node:nth-child(6){grid-column:auto}.node:after,.node:before{display:none}.row{grid-template-columns:1fr}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#061622;color:#f4fbff;font:14px Segoe UI,Arial,sans-serif;overflow-x:hidden}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(rgba(57,206,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(57,206,255,.07) 1px,transparent 1px),radial-gradient(circle at 65% 20%,rgba(255,149,32,.12),transparent 28%);background-size:34px 34px,34px 34px,100% 100%}
+main{position:relative;max-width:1540px;margin:0 auto;padding:24px 26px 28px}
+header{display:grid;grid-template-columns:1fr 180px 230px 176px;gap:18px;align-items:center;margin-bottom:18px}
+h1{font-size:48px;line-height:.96;margin:0;font-weight:900;letter-spacing:0}.accent{color:#31e7ff}.tagline{font-size:24px;color:#baf3ff;margin-top:8px}
+.micro{border-left:2px solid #ff9e2b;padding:8px 0 8px 20px;color:#98d8ef;font-size:11px;letter-spacing:4px;line-height:1.7;text-transform:uppercase}.live{justify-self:end;border:1px solid #22c7ff;background:#06273a;padding:12px 18px;color:#5fffe2;font-weight:800;box-shadow:0 0 24px rgba(34,199,255,.2)}
+.live:before{content:"";display:inline-block;width:12px;height:12px;margin-right:10px;border-radius:50%;background:#55ff9a;box-shadow:0 0 14px #55ff9a;vertical-align:-1px;animation:blink 1.1s infinite}
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px}.metric,.panel,.node,.orchestrator,.loop{border:1px solid #1d83bb;background:rgba(7,34,54,.78);box-shadow:0 0 18px rgba(37,196,255,.15),inset 0 0 24px rgba(9,95,145,.18)}
+.metric{min-height:90px;padding:16px;display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:center}.metric .ico{width:44px;height:44px;display:grid;place-items:center;background:#0b3756;border:1px solid #187fbb;color:#42e8ff;font-size:24px}
+.metric b{display:block;font-size:18px;color:#67f6ff}.metric span{display:block;color:#b8d5e4;margin-top:5px;font-size:12px}.ring{width:54px;height:54px;border-radius:50%;background:conic-gradient(#24ffe2 var(--p),#18384c 0);display:grid;place-items:center}.ring:after{content:"";width:38px;height:38px;border-radius:50%;background:#092034}
+.layout{display:grid;grid-template-columns:1fr 310px;gap:18px}.board{position:relative;min-height:670px;border:1px solid #124c72;background:rgba(4,24,38,.68);padding:18px;overflow:hidden}
+.board:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 0 49%,rgba(255,255,255,.08) 50%,transparent 51%);opacity:.25}
+.flow{position:relative;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:160px 150px 160px;gap:86px 28px;z-index:1}
+.node{position:relative;min-height:146px;padding:18px 16px 46px}.node .num{position:absolute;top:12px;left:12px;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#1f8df0;color:white;font-weight:900;font-size:20px}.node .body{margin-left:50px}.title{font-weight:850;font-size:18px}.meta{font-size:12px;margin-top:6px;text-transform:uppercase;color:#a9dcef}.msg{margin-top:12px;color:#def8ff;line-height:1.45}.foot{position:absolute;left:38px;right:38px;bottom:-20px;text-align:center;background:#082943;border:1px solid #1d83bb;padding:8px;color:#9edfff;font-size:12px}
+.node:after,.node:before{content:"";position:absolute;background:#33e9ff;box-shadow:0 0 10px #33e9ff}.node:after{top:70px;right:-29px;width:29px;height:3px}.node.down:before{left:50%;bottom:-87px;width:3px;height:87px}.node.left:after{right:auto;left:-29px}.node.no-line:after{display:none}
+.s1{border-color:#ff9b28}.s1 .num{background:#ff6a20}.s1:after{background:#ff9b28;box-shadow:0 0 10px #ff9b28}.s2{border-color:#2fc5ff}.s3,.s6{border-color:#21d6a1}.s4,.s8{border-color:#a65cff}.s5{border-color:#44a3ff}.s7{border-color:#f5c451}
+.orchestrator{position:absolute;left:50%;top:330px;transform:translate(-50%,-50%);width:330px;min-height:126px;text-align:center;padding:22px;border-color:#ff8a24;box-shadow:0 0 24px rgba(255,138,36,.38),inset 0 0 28px rgba(255,138,36,.12);z-index:2}
+.orchestrator .atom{font-size:42px;color:#ffb02e;animation:spin 8s linear infinite}.orchestrator b{display:block;font-size:26px;margin-top:2px}.loop{position:absolute;left:31%;right:28%;bottom:52px;text-align:center;padding:12px;border-color:#ff4dad;color:#ffd5ec;z-index:2}
+.panel{padding:16px}.side{display:grid;gap:12px}.panel h2{margin:0 0 14px;font-size:18px}.activity{display:grid;grid-template-columns:54px 1fr 24px;gap:10px;padding:8px 0;border-bottom:1px solid rgba(137,214,255,.14)}.activity .ok{color:#5cff9b}.activity .wait{color:#68869a}
+.bars{height:138px;display:flex;align-items:end;gap:6px;border-left:1px solid #2b6f95;border-bottom:1px solid #2b6f95;padding:0 8px 8px}.bars i{flex:1;background:linear-gradient(#30ffe2,#0e5f8f);min-height:8px;animation:grow 2.4s ease-in-out infinite alternate}.output div{padding:9px 0;border-bottom:1px solid rgba(137,214,255,.14)}.empty{color:#9fc7dc;padding:16px 0}
+.running{animation:pulse 1.4s infinite}.running .num{background:#28e0c3}.success{box-shadow:0 0 22px rgba(79,255,142,.22),inset 0 0 24px rgba(42,168,92,.18);border-color:#54ee8f}.failed{border-color:#ff625b;box-shadow:0 0 22px rgba(255,98,91,.22)}
+@keyframes pulse{50%{box-shadow:0 0 30px rgba(49,231,255,.38),inset 0 0 30px rgba(49,231,255,.16)}}@keyframes blink{50%{opacity:.35}}@keyframes spin{to{transform:rotate(360deg)}}@keyframes grow{to{transform:scaleY(.62)}}@keyframes flow{to{background-position:-200% 0}}
+.success:after,.running:after,.success:before,.running:before{background:linear-gradient(90deg,#21ffc8,#ff9b28,#21ffc8);background-size:200% 100%;animation:flow 1.2s linear infinite}
+@media(max-width:1px){header,.metrics,.layout{grid-template-columns:1fr}.flow{grid-template-columns:1fr;grid-template-rows:none;gap:14px}.node:after,.node:before,.orchestrator,.loop{display:none}.node{min-height:130px}.foot{position:static;margin:14px 0 -4px}.board{min-height:auto}}
 </style>
 <main>
   <header>
-    <div>
-      <h1>AUTONOMI AGENTIC ILMIAH</h1>
-      <div class="sub">Live progress agent workflow</div>
-    </div>
-    <div class="pill">http://127.0.0.1:8000</div>
+    <div><h1>Contoh <span class="accent">Agentic AI</span> Sedang Bekerja</h1><div class="tagline">AUTONOMI AGENTIC ILMIAH | Dari prompt pengguna -> analisis -> tool -> proses -> output</div></div>
+    <div class="micro">AI bekerja untuk anda<br>mengubah ide menjadi<br>hasil nyata</div>
+    <div class="micro">Lebih cerdas<br>lebih cepat<br>masa depan lebih dekat</div>
+    <div class="live">LIVE EXECUTION</div>
   </header>
-  <section id="flow" class="flow"></section>
-  <section class="events">
-    <div class="sub">Recent activity</div>
-    <div id="events" class="empty">Menunggu progress...</div>
+  <section class="metrics">
+    <div class="metric"><div class="ring" id="status-ring" style="--p:0%"></div><div>TASK STATUS<b id="task-status">Waiting</b><span>Agent menunggu instruksi...</span></div></div>
+    <div class="metric"><div class="ico">[]</div><div>INPUT<b id="input-count">0 prompt</b><span>Teks, web, dokumen</span></div></div>
+    <div class="metric"><div class="ico">#</div><div>TOOLS AKTIF<b>Web, Python, API</b><span>Tool lokal terhubung</span></div></div>
+    <div class="metric"><div class="ring" id="progress-ring" style="--p:0%"></div><div>PROGRESS<b id="progress">0%</b><span>Memproses...</span></div></div>
+    <div class="metric"><div class="ico">@</div><div>OUTPUT TARGET<b>Ringkasan + DOCX</b><span>Format laporan lengkap</span></div></div>
+  </section>
+  <section class="layout">
+    <div class="board">
+      <section id="flow" class="flow"></section>
+      <div class="orchestrator"><div class="atom">*</div><b>Agent Orchestrator</b><div>Mengkoordinasikan langkah, memilih tool, dan mengelola eksekusi secara otonom</div></div>
+      <div class="loop">Feedback Loop: jika perlu, kembali ke perencanaan atau eksekusi untuk hasil lebih baik</div>
+    </div>
+    <aside class="side">
+      <section class="panel"><h2>Aktivitas Langsung <span class="live" style="padding:6px 10px;font-size:12px">LIVE</span></h2><div id="events" class="empty">Menunggu progress...</div></section>
+      <section class="panel"><h2>Efisiensi Proses</h2><div class="bars"><i style="height:20%"></i><i style="height:34%"></i><i style="height:30%"></i><i style="height:48%"></i><i style="height:62%"></i><i style="height:78%"></i></div><b id="efficiency">0% saat ini</b></section>
+      <section class="panel output"><h2>Output Sedang Disusun...</h2><div id="outputs"></div></section>
+    </aside>
   </section>
 </main>
 <script>
 const steps=[
-  ["instruction","Instruksi","Permintaan diterima"],["check","Check","Cek kesehatan sistem"],
-  ["plan","Plan","Rencana riset"],["discovery","Discovery","Pencarian sumber"],["verification","Verify","Verifikasi sumber"],
-  ["retrieval","Retrieve","Ambil full text"],["evidence","Evidence","Ekstraksi evidence"],["synthesis","Synthesis","Sintesis dan outline"],
-  ["audit","Audit","Citation/fact audit"],["academic","DOCX","Draft dan dokumen akhir"]
+  ["instruction","Input Pengguna","Prompt diterima oleh agent","s1"],["check","Memahami Intent","Cek sistem dan batasan","s2"],
+  ["plan","Menyusun Rencana","Rencana eksekusi disusun","s3 down"],["verification","Akses Memori & Konteks","Mengambil konteks relevan","s4 no-line"],
+  ["discovery","Pemilihan Tool","Memilih tool yang dibutuhkan","s5"],["retrieval","Eksekusi","Menjalankan tugas secara otonom","s6"],
+  ["audit","Validasi","Validasi kualitas output","s7"],["academic","Output Akhir","Hasil siap digunakan","s8 no-line"]
 ];
-const icons={instruction:"@",check:"✓",plan:"≡",discovery:"⌕",verification:"◇",retrieval:"↓",evidence:"§",synthesis:"✦",audit:"!",academic:"▣"};
-const flow=document.getElementById("flow");
-const box=document.getElementById("events");
-function state(s){s=(s||"").toLowerCase();return s.includes("fail")?"failed":s.includes("run")||s.includes("start")?"running":s.includes("success")?"success":"idle"}
+const flow=document.getElementById("flow"),box=document.getElementById("events"),outputs=document.getElementById("outputs");
+function st(s){s=(s||"").toLowerCase();return s.includes("fail")?"failed":s.includes("run")||s.includes("start")?"running":s.includes("success")?"success":"idle"}
+function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function pct(events){const done=new Set(events.filter(e=>st(e.status)==="success").map(e=>(e.stage||"").toLowerCase()));return Math.round(done.size/steps.length*100)}
 function paintFlow(events){
-  const latest={};
-  events.forEach(e=>latest[(e.stage||"").toLowerCase()]=e);
-  flow.innerHTML=steps.map(([key,title,fallback])=>{
-    const e=latest[key]||{};
-    const st=state(e.status);
-    return `<article class="node ${st}"><div class="icon">${icons[key]}</div><div class="title">${title}</div><div class="meta">${e.status||"waiting"}</div><div class="msg">${e.message||fallback}</div></article>`;
+  const latest={};events.forEach(e=>latest[(e.stage||"").toLowerCase()]=e);
+  flow.innerHTML=steps.map(([key,title,fallback,klass],i)=>{
+    const e=latest[key]||{},state=st(e.status),msg=e.message||fallback;
+    return `<article class="node ${klass} ${state}"><div class="num">${i+1}</div><div class="body"><div class="title">${title}</div><div class="meta">${esc(e.status||"waiting")}</div><div class="msg">${esc(msg)}</div></div><div class="foot">${esc(fallback)}</div></article>`;
   }).join("");
 }
 async function load(){
-  const r=await fetch("/api/progress");
-  const data=await r.json();
-  paintFlow(data.events);
-  if(!data.events.length){box.className="empty";box.textContent="Menunggu progress...";return}
+  const r=await fetch("/api/progress"),data=await r.json(),events=data.events||[],progress=pct(events);
+  paintFlow(events);
+  document.getElementById("progress").textContent=progress+"%";document.getElementById("efficiency").textContent=progress+"% saat ini";
+  document.getElementById("progress-ring").style.setProperty("--p",progress+"%");document.getElementById("status-ring").style.setProperty("--p",progress+"%");
+  document.getElementById("task-status").textContent=events.some(e=>st(e.status)==="running")?"Running":progress?"Active":"Waiting";
+  document.getElementById("input-count").textContent=events.length?events.length+" aktivitas":"0 prompt";
+  if(!events.length){box.className="empty";box.textContent="Menunggu progress...";outputs.innerHTML="<div>Menunggu output</div>";return}
   box.className="";
-  box.innerHTML=data.events.slice().reverse().map(e=>`<div class="row"><div>${e.stage}</div><div>${e.status}</div><div>${e.message||""}</div><div class="time">${e.time||""}</div></div>`).join("");
+  box.innerHTML=events.slice(-8).reverse().map(e=>`<div class="activity"><span>${esc((e.time||"").slice(11,16))}</span><span>${esc(e.message||e.stage)}</span><b class="${st(e.status)==="success"?"ok":"wait"}">${st(e.status)==="success"?"OK":"o"}</b></div>`).join("");
+  outputs.innerHTML=steps.slice(0,4).map(([key,title])=>`<div>${events.some(e=>(e.stage||"").toLowerCase()===key&&st(e.status)==="success")?"OK":".."} ${title}</div>`).join("");
 }
-load(); setInterval(load,2000);
+load();setInterval(load,2000);
 </script>
 """
 

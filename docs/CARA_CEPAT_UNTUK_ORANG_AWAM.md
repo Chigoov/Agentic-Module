@@ -78,6 +78,8 @@ http://127.0.0.1:8000
 ```
 
 Progress akan muncul setelah sistem menjalankan `check`, `plan`, atau workflow.
+Tampilannya berbentuk flowchart: input pengguna, intent, rencana, konteks,
+tool, eksekusi, validasi, dan output akhir.
 
 ## 6. Cara Menghentikan
 
