@@ -63,3 +63,20 @@ $autonomi-agentic-ilmiah
 Untuk tahap sekarang, bagikan lewat GitHub + skill folder. PyPI/package install
 belum wajib sampai project ini benar-benar perlu dipakai banyak orang dari
 command `pip install`.
+
+## Sebagai Codex Plugin Lokal
+
+Versi plugin lokal sudah dibuat di:
+
+```text
+C:\Users\HYPE AMD\plugins\autonomi-agentic-ilmiah
+```
+
+Marketplace personal Codex sudah menunjuk ke plugin itu melalui:
+
+```text
+C:\Users\HYPE AMD\.agents\plugins\marketplace.json
+```
+
+Jika Codex belum menampilkan plugin, tutup dan buka lagi aplikasi Codex, lalu
+cari **Autonomi Agentic Ilmiah** di daftar plugin personal.
