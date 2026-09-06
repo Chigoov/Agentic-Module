@@ -31,7 +31,9 @@ from typing import Any, ClassVar
 from pydantic import Field
 
 from src.core.config import get_config
+from src.core.paths import get_paths
 from src.core.status import IntegrationStatus
+from src.routing.telemetry import record_model_telemetry
 from src.tools.base import BaseTool, ToolRequest, ToolResponse
 
 __all__ = [
@@ -39,6 +41,7 @@ __all__ = [
     "ModelRequest",
     "ModelResponse",
     "ModelRouterTool",
+    "resolve_model_for_capability",
 ]
 
 
@@ -149,15 +152,31 @@ class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
         if declared is IntegrationStatus.DISABLED:
             return IntegrationStatus.DISABLED
 
-        # Phase 1: no provider is selected and no capability map is populated,
-        # so the router cannot dispatch anything regardless of declared status.
-        if not routing.provider or not routing.capability_map:
+        if not routing.provider or not routing.capability_map or (routing.api_key_env and not routing.api_key):
             return IntegrationStatus.PENDING_CONFIGURATION
 
         return declared
 
     def _execute(self, request: ModelRequest) -> ModelResponse:
-        """Stub that should never be reached due to status check."""
-        raise NotImplementedError(
-            "ModelRouterTool is a Phase 1 stub. Real implementation comes in Phase 2."
+        """Resolve the configured model and fail safely until a provider client exists."""
+        routing = get_config().model_routing
+        model = resolve_model_for_capability(request.capability, routing.capability_map)
+        system_root = get_paths().system_root
+        record_model_telemetry(
+            root=system_root,
+            path=system_root / "model_telemetry.jsonl",
+            capability=request.capability.value,
+            status="PROVIDER_CLIENT_NOT_IMPLEMENTED",
+            model_used=model or "",
+            error_code="PROVIDER_CLIENT_NOT_IMPLEMENTED",
         )
+        return ModelResponse.failure(
+            error_code="PROVIDER_CLIENT_NOT_IMPLEMENTED",
+            error_message="A provider/model is configured, but no provider client is implemented yet",
+            model_used=model or "",
+        )
+
+
+def resolve_model_for_capability(capability: ModelCapability, capability_map: dict[str, str]) -> str | None:
+    """Return the configured model for a capability, accepting enum names or values."""
+    return capability_map.get(capability.value) or capability_map.get(capability.name)
