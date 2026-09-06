@@ -43,6 +43,13 @@ Open `http://127.0.0.1:8000` to watch progress. AI agents can call:
 - `GET /api/plan?topic=topik%20riset`
 - `POST /api/run-academic`
 
+When the monitor is active or the user asks for live progress, start each
+user-facing reply with:
+
+```text
+Live progress: http://127.0.0.1:8000
+```
+
 ## Workflow
 
 1. Run `python -m src check` before using the project.

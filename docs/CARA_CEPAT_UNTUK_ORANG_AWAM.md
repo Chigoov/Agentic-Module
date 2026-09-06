@@ -39,9 +39,22 @@ Cek sistem, lalu buat plan untuk topik:
 [@Autonomi Agentic Ilmiah](plugin://autonomi-agentic-ilmiah@personal)
 
 Jalankan check, lalu buat plan untuk topik: <isi topik saya>.
+Di awal setiap jawaban, tampilkan:
+Live progress: http://127.0.0.1:8000
 ```
 
-## 4. Untuk Melihat Progress
+## 4. Prompt Dengan Live Progress
+
+```text
+[@Autonomi Agentic Ilmiah](plugin://autonomi-agentic-ilmiah@personal)
+
+Gunakan monitor localhost: http://127.0.0.1:8000.
+Di awal setiap jawaban, tampilkan link live progress tersebut.
+Jalankan check, lalu kerjakan tugas saya:
+<tulis tugas di sini>
+```
+
+## 5. Untuk Melihat Progress
 
 Buka dashboard:
 
@@ -51,7 +64,7 @@ http://127.0.0.1:8000
 
 Progress akan muncul setelah sistem menjalankan `check`, `plan`, atau workflow.
 
-## 5. Cara Menghentikan
+## 6. Cara Menghentikan
 
 Klik jendela CMD yang menjalankan monitor, lalu tekan:
 

@@ -25,32 +25,67 @@ INDEX = """<!doctype html>
 <meta charset="utf-8">
 <title>Autonomi Monitor</title>
 <style>
-body{margin:0;background:#0b0f14;color:#e6edf3;font:14px Segoe UI,Arial,sans-serif}
-main{max-width:920px;margin:36px auto;padding:0 20px}
-h1{font-size:24px;margin:0 0 4px}.sub{color:#8b949e;margin-bottom:28px}
-.bar{height:8px;background:#1f2937;border-radius:999px;overflow:hidden;margin:14px 0 28px}
-.bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,#2dd4bf,#60a5fa,#a78bfa);animation:pulse 2s ease-in-out infinite}
-.row{display:grid;grid-template-columns:120px 120px 1fr 190px;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid #1f2937}
-.dot{width:12px;height:12px;border-radius:50%;background:#6b7280;box-shadow:0 0 0 0 transparent}
-.ok .dot{background:#22c55e}.running .dot{background:#60a5fa;animation:ring 1.2s infinite}.failed .dot{background:#ef4444}
-.stage{font-weight:600}.status{color:#c9d1d9;text-transform:uppercase;font-size:12px}.time{color:#8b949e;font-size:12px}.empty{color:#8b949e;padding:28px 0}
-@keyframes ring{50%{box-shadow:0 0 0 8px rgba(96,165,250,.16)}}@keyframes pulse{50%{width:100%}}
+*{box-sizing:border-box}body{margin:0;background:#11110f;color:#f4f1e8;font:14px Segoe UI,Arial,sans-serif}
+main{max-width:1180px;margin:28px auto;padding:0 18px}
+header{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:22px}
+h1{font-size:24px;margin:0 0 4px}.sub,.time{color:#a8a29e}.pill{border:1px solid #3f3a34;padding:7px 10px;background:#191814}
+.flow{position:relative;display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:28px 42px;margin:20px 0 28px}
+.node{position:relative;min-height:96px;border:1px solid #3f3a34;background:#1b1a17;padding:14px;box-shadow:0 0 0 1px rgba(255,255,255,.02),0 14px 28px rgba(0,0,0,.22)}
+.node:after{content:"";position:absolute;top:47px;right:-43px;width:42px;height:2px;background:#48433b}
+.node:nth-child(5):after,.node:last-child:after{display:none}
+.node:nth-child(5){grid-column:5}.node:nth-child(6){grid-column:5}.node:nth-child(6):before{content:"";position:absolute;top:-29px;right:50%;width:2px;height:28px;background:#48433b}
+.node:nth-child(n+7):after{right:auto;left:-43px}.node:nth-child(n+7){direction:rtl}.node:nth-child(n+7)>*{direction:ltr}
+.icon{width:30px;height:30px;display:grid;place-items:center;margin-bottom:10px;background:#27231d;color:#f5c451;border:1px solid #51483a;font-size:17px}
+.title{font-weight:700}.meta{color:#b7b0a6;font-size:12px;margin-top:4px;text-transform:uppercase}.msg{color:#d8d2c7;font-size:12px;margin-top:8px;line-height:1.35}
+.node.running{border-color:#36c7b7;box-shadow:0 0 0 1px rgba(54,199,183,.25),0 0 28px rgba(54,199,183,.12)}
+.node.success{border-color:#65a765}.node.failed{border-color:#df685d}.node.running .icon{animation:beat 1.1s infinite;background:#18312e;color:#5eead4}
+.node.success .icon{background:#20301f;color:#86efac}.node.failed .icon{background:#3a1f1c;color:#fca5a5}
+.node.running:after,.node.success:after{background:linear-gradient(90deg,#36c7b7,#f5c451,#36c7b7);background-size:200% 100%;animation:line 1.4s linear infinite}
+.events{border-top:1px solid #302c27;padding-top:14px}.row{display:grid;grid-template-columns:110px 105px 1fr 190px;gap:12px;padding:10px 0;border-bottom:1px solid #26231f}.empty{color:#a8a29e;padding:18px 0}
+@keyframes beat{50%{transform:scale(1.08);box-shadow:0 0 0 8px rgba(54,199,183,.12)}}@keyframes line{to{background-position:-200% 0}}
+@media(max-width:820px){header{display:block}.flow{grid-template-columns:1fr;gap:14px}.node,.node:nth-child(5),.node:nth-child(6){grid-column:auto}.node:after,.node:before{display:none}.row{grid-template-columns:1fr}}
 </style>
 <main>
-  <h1>AUTONOMI AGENTIC ILMIAH</h1>
-  <div class="sub">Local workflow monitor</div>
-  <div class="bar"><span></span></div>
-  <div id="events" class="empty">Menunggu progress...</div>
+  <header>
+    <div>
+      <h1>AUTONOMI AGENTIC ILMIAH</h1>
+      <div class="sub">Live progress agent workflow</div>
+    </div>
+    <div class="pill">http://127.0.0.1:8000</div>
+  </header>
+  <section id="flow" class="flow"></section>
+  <section class="events">
+    <div class="sub">Recent activity</div>
+    <div id="events" class="empty">Menunggu progress...</div>
+  </section>
 </main>
 <script>
+const steps=[
+  ["instruction","Instruksi","Permintaan diterima"],["check","Check","Cek kesehatan sistem"],
+  ["plan","Plan","Rencana riset"],["discovery","Discovery","Pencarian sumber"],["verification","Verify","Verifikasi sumber"],
+  ["retrieval","Retrieve","Ambil full text"],["evidence","Evidence","Ekstraksi evidence"],["synthesis","Synthesis","Sintesis dan outline"],
+  ["audit","Audit","Citation/fact audit"],["academic","DOCX","Draft dan dokumen akhir"]
+];
+const icons={instruction:"@",check:"✓",plan:"≡",discovery:"⌕",verification:"◇",retrieval:"↓",evidence:"§",synthesis:"✦",audit:"!",academic:"▣"};
+const flow=document.getElementById("flow");
 const box=document.getElementById("events");
-function cls(s){s=(s||"").toLowerCase();return s.includes("fail")?"failed":s.includes("run")||s.includes("start")?"running":"ok"}
+function state(s){s=(s||"").toLowerCase();return s.includes("fail")?"failed":s.includes("run")||s.includes("start")?"running":s.includes("success")?"success":"idle"}
+function paintFlow(events){
+  const latest={};
+  events.forEach(e=>latest[(e.stage||"").toLowerCase()]=e);
+  flow.innerHTML=steps.map(([key,title,fallback])=>{
+    const e=latest[key]||{};
+    const st=state(e.status);
+    return `<article class="node ${st}"><div class="icon">${icons[key]}</div><div class="title">${title}</div><div class="meta">${e.status||"waiting"}</div><div class="msg">${e.message||fallback}</div></article>`;
+  }).join("");
+}
 async function load(){
   const r=await fetch("/api/progress");
   const data=await r.json();
+  paintFlow(data.events);
   if(!data.events.length){box.className="empty";box.textContent="Menunggu progress...";return}
   box.className="";
-  box.innerHTML=data.events.slice().reverse().map(e=>`<div class="row ${cls(e.status)}"><div><span class="dot"></span></div><div class="stage">${e.stage}</div><div><div class="status">${e.status}</div><div>${e.message||""}</div></div><div class="time">${e.time||""}</div></div>`).join("");
+  box.innerHTML=data.events.slice().reverse().map(e=>`<div class="row"><div>${e.stage}</div><div>${e.status}</div><div>${e.message||""}</div><div class="time">${e.time||""}</div></div>`).join("");
 }
 load(); setInterval(load,2000);
 </script>
