@@ -17,6 +17,13 @@ there is a real need — not as an empty abstraction.
 
 from __future__ import annotations
 
-from src.workflows import evidence_flow, verification_flow, writing_flow  # noqa: F401
-
-__all__: list[str] = ["evidence_flow", "verification_flow", "writing_flow"]
+__all__: list[str] = [
+    "academic",
+    "deep_research",
+    "evidence_flow",
+    "optimization",
+    "orchestrator",
+    "validation",
+    "verification_flow",
+    "writing_flow",
+]

@@ -9,9 +9,8 @@
 system:
   name: AUTONOMI AGENTIC ILMIAH
   spec_version: "1.0"
-  # Legacy runtime marker: completed old Phase 6 (Synthesis/Writing).
-  # Current roadmap status lives in BUILD_PLAN.md.
-  build_phase: 6
+  # Current completed roadmap phase.
+  build_phase: 17
 
 logging:
   level: INFO

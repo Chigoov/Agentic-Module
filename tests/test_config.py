@@ -19,7 +19,7 @@ def test_get_config_loads_successfully() -> None:
 def test_system_section_defaults() -> None:
     """System section has expected defaults."""
     config = get_config()
-    assert config.system.build_phase == 6
+    assert config.system.build_phase == 17
 
 
 def test_logging_section_defaults() -> None:

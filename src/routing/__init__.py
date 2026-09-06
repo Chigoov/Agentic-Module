@@ -11,6 +11,6 @@ wires real providers once API keys are configured.
 
 from __future__ import annotations
 
-from src.routing import model_router  # noqa: F401
+from src.routing import model_router, telemetry  # noqa: F401
 
-__all__ = ["model_router"]
+__all__ = ["model_router", "telemetry"]

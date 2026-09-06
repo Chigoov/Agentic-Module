@@ -87,12 +87,11 @@ Expected output:
    SYSTEM_ROOT: ...\DATA BASE
    WORKSPACE_ROOT: ...\AUTONOMI AGENTIC ILMIAH
    Spec version: 1.0
-   Build phase: 6
+   Build phase: 17
 ```
 
-`Build phase: 6` is a legacy runtime marker for the completed
-Synthesis/Writing implementation. The current roadmap status is maintained in
-`BUILD_PLAN.md`.
+`Build phase: 17` means the current roadmap has completed the optimization
+reporting pass in `BUILD_PLAN.md`.
 
 Run the fast test suite:
 
@@ -104,10 +103,11 @@ python -m pytest tests/ -q
 
 ## Build Status
 
-See `BUILD_PLAN.md` for the current roadmap. The next roadmap step is
-**Phase 7 — Research Agents**. Completed code includes
+See `BUILD_PLAN.md` for the current roadmap. Completed code includes
 Discovery/Foundation, PoP + research discovery tools, Context Intelligence,
-Verification, Evidence/Claim, Retrieval, Synthesis/Outline, and Writing.
+Verification, Evidence/Claim, Retrieval, Research Agents, Orchestrator,
+Model Routing telemetry, Synthesis/Outline, Writing, Audit, DOCX generation,
+Academic Writing Mode, Deep Research Mode, End-to-End Validation, and Optimization.
 
 ---
 

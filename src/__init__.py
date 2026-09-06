@@ -22,8 +22,7 @@ SYSTEM_NAME = "AUTONOMI AGENTIC ILMIAH"
 #: Version of the specification documents in SYSTEM_ROOT that this code targets.
 SPEC_VERSION = "1.0"
 
-#: Legacy runtime marker for completed old Phase 6 (Synthesis/Writing).
-#: Current roadmap status lives in BUILD_PLAN.md.
-BUILD_PHASE = 6
+#: Current completed roadmap phase.
+BUILD_PHASE = 17
 
 __version__ = "1.0.0"

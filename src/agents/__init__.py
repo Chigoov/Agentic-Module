@@ -9,14 +9,18 @@ from __future__ import annotations
 
 from src.agents import (  # noqa: F401
     claim_verification,
+    audit,
     outline,
+    research,
     synthesis,
     writer,
 )
 
 __all__: list[str] = [
     "claim_verification",
+    "audit",
     "outline",
+    "research",
     "synthesis",
     "writer",
 ]
