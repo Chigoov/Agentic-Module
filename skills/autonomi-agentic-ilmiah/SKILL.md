@@ -65,5 +65,9 @@ For the input shape, read [references/input-json.md](references/input-json.md).
 
 - Do not invent sources, DOI, quotes, page numbers, or evidence.
 - Do not bypass citation/fact audit.
+- Do not leave internal ChatGPT/File citation tokens in final academic output, including `turn...`, `view...`, `search...`, or `filecite`.
+- Final academic output must use APA 7 in-text citations and include a bibliography.
+- For every data source, legal source, and scientific article, include source name, year, title, link/DOI when available, and page/section when available.
+- If a source cannot be completed, mark it as `[sumber belum lengkap]` instead of pretending it is complete.
 - If model routing is not configured, report the safe failure instead of inventing model output.
 - After code changes, run `python -m pytest -q --tb=short` and `python -m src check`.

@@ -56,6 +56,16 @@ Panggil endpoint lokal:
 - Agent tidak boleh membuat DOCX jika audit gagal.
 - Jika provider/model belum dikonfigurasi, routing harus gagal aman.
 
+## Kewajiban Output Akademik
+
+- Jangan meninggalkan sitasi internal seperti `turn...`, `view...`,
+  `search...`, atau `filecite` pada output final.
+- Ubah semua sumber terverifikasi menjadi sitasi dalam teks APA 7.
+- Tambahkan daftar pustaka APA 7.
+- Untuk setiap sumber data, sumber hukum, dan artikel ilmiah, tampilkan:
+  nama sumber, tahun, judul, link/DOI jika ada, serta halaman/bagian jika ada.
+- Jika metadata sumber belum lengkap, tulis `[sumber belum lengkap]`.
+
 ## Verifikasi Wajib
 
 ```powershell
