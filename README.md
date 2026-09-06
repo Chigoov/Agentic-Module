@@ -90,6 +90,10 @@ Expected output:
    Build phase: 6
 ```
 
+`Build phase: 6` is a legacy runtime marker for the completed
+Synthesis/Writing implementation. The current roadmap status is maintained in
+`BUILD_PLAN.md`.
+
 Run the fast test suite:
 
 ```bash
@@ -100,19 +104,10 @@ python -m pytest tests/ -q
 
 ## Build Status
 
-| Phase | Status |
-|---|---|
-| 0 — Discovery & Architecture | ✅ |
-| 1 — Foundation | ✅ |
-| 2 — Model Routing (abstraction) | ✅ |
-| 2.1 — PoP integration | ✅ |
-| 3 — Research Tools | ✅ |
-| 4 — Verification Engine | ✅ |
-| 5 — Evidence/Claim Engine | ✅ |
-| 6 — Synthesis/Writing | ✅ |
-| 7 — Audit | ⬜ planned |
-| 8 — DOCX | ⬜ planned |
-| 9+ — Academic Writing, Deep Research, E2E | ⬜ planned |
+See `BUILD_PLAN.md` for the current roadmap. The next roadmap step is
+**Phase 7 — Research Agents**. Completed code includes
+Discovery/Foundation, PoP + research discovery tools, Context Intelligence,
+Verification, Evidence/Claim, Retrieval, Synthesis/Outline, and Writing.
 
 ---
 
