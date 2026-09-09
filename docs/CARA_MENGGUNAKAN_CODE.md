@@ -8,7 +8,7 @@ Panduan ini menjelaskan cara menjalankan code yang sudah selesai sampai Fase 18.
 Jalankan semua perintah dari folder:
 
 ```powershell
-cd "C:\Users\HYPE AMD\Downloads\VIBE CODING\AUTONOMI AGENTIC ILMIAH\DATA BASE"
+cd "C:\jalan\ke\folder\checkout\anda"
 ```
 
 ## 2. Install Dependency
@@ -59,7 +59,7 @@ from src.schemas.project import Project
 from src.schemas.source import Source, SourceState
 from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
 
-project_dir = Path(r"C:\Users\HYPE AMD\Downloads\VIBE CODING\AUTONOMI AGENTIC ILMIAH\TUGAS 1\contoh_run")
+project_dir = Path(r"C:\jalan\ke\workspace\anda\TUGAS 1\contoh_run")
 project_dir.mkdir(parents=True, exist_ok=True)
 
 project = Project(

@@ -1,0 +1,2688 @@
+[
+  {
+    "path": "src/__init__.py",
+    "lines": 28,
+    "sha256": "3afd313a56f1e09a165c368ca25dd1760efd2612e243c2efa1db903eb6dce274",
+    "symbols": []
+  },
+  {
+    "path": "src/__main__.py",
+    "lines": 19,
+    "sha256": "672f650f854ff0afd87370b5fdb0f794797169e7bf6b340623cc52792f522349",
+    "symbols": []
+  },
+  {
+    "path": "src/agents/__init__.py",
+    "lines": 26,
+    "sha256": "ebda6e3e452ff704f89668c27f2933f595593688e9d3a848cbe64b4deb27cc3d",
+    "symbols": []
+  },
+  {
+    "path": "src/agents/audit.py",
+    "lines": 74,
+    "sha256": "3bb88d8576e193b68d8f51234176c0ee9b22013c6050ad3e5b509ec3c2b389d2",
+    "symbols": [
+      {
+        "name": "CitationAuditRequest",
+        "line": 25
+      },
+      {
+        "name": "CitationAuditResponse",
+        "line": 31
+      },
+      {
+        "name": "CitationAuditAgent",
+        "line": 37
+      },
+      {
+        "name": "FactAuditRequest",
+        "line": 52
+      },
+      {
+        "name": "FactAuditResponse",
+        "line": 57
+      },
+      {
+        "name": "FactAuditAgent",
+        "line": 63
+      },
+      {
+        "name": "_make_error_response",
+        "line": 40
+      },
+      {
+        "name": "_execute",
+        "line": 43
+      },
+      {
+        "name": "_make_error_response",
+        "line": 66
+      },
+      {
+        "name": "_execute",
+        "line": 69
+      }
+    ]
+  },
+  {
+    "path": "src/agents/base.py",
+    "lines": 139,
+    "sha256": "7abb1bf15b9ebd22c2c7762196ffe54b2147437d2d3a0b09d67e9737e4d24f97",
+    "symbols": [
+      {
+        "name": "AgentRequest",
+        "line": 34
+      },
+      {
+        "name": "AgentResponse",
+        "line": 40
+      },
+      {
+        "name": "BaseAgent",
+        "line": 75
+      },
+      {
+        "name": "__init__",
+        "line": 87
+      },
+      {
+        "name": "execute",
+        "line": 91
+      },
+      {
+        "name": "_execute",
+        "line": 125
+      },
+      {
+        "name": "_make_error_response",
+        "line": 128
+      },
+      {
+        "name": "describe",
+        "line": 134
+      }
+    ]
+  },
+  {
+    "path": "src/agents/claim_verification.py",
+    "lines": 160,
+    "sha256": "5e11a0ac6dcb816f2f094f818315c515f2167ca3e829ba1db3d047412d85a055",
+    "symbols": [
+      {
+        "name": "ClaimOutcome",
+        "line": 46
+      },
+      {
+        "name": "ClaimVerificationRequest",
+        "line": 58
+      },
+      {
+        "name": "ClaimVerificationResponse",
+        "line": 64
+      },
+      {
+        "name": "ClaimVerificationAgent",
+        "line": 79
+      },
+      {
+        "name": "_make_error_response",
+        "line": 86
+      },
+      {
+        "name": "_sync_claim_evidence",
+        "line": 89
+      },
+      {
+        "name": "_execute",
+        "line": 105
+      }
+    ]
+  },
+  {
+    "path": "src/agents/outline.py",
+    "lines": 105,
+    "sha256": "83a704701e70a324049442348e4ee50427f6f97e4ebfe29a298a33e95e3d7805",
+    "symbols": [
+      {
+        "name": "OutlineRequest",
+        "line": 40
+      },
+      {
+        "name": "OutlineResponse",
+        "line": 48
+      },
+      {
+        "name": "OutlineAgent",
+        "line": 56
+      },
+      {
+        "name": "_make_error_response",
+        "line": 61
+      },
+      {
+        "name": "_execute",
+        "line": 64
+      }
+    ]
+  },
+  {
+    "path": "src/agents/research.py",
+    "lines": 224,
+    "sha256": "38b4552277166e48a83669921196f079fe223d183ae7e5e6625aa31738de2322",
+    "symbols": [
+      {
+        "name": "TaskAnalyzerRequest",
+        "line": 47
+      },
+      {
+        "name": "TaskAnalyzerResponse",
+        "line": 52
+      },
+      {
+        "name": "TaskAnalyzerAgent",
+        "line": 57
+      },
+      {
+        "name": "ResearchPlannerRequest",
+        "line": 72
+      },
+      {
+        "name": "ResearchPlannerResponse",
+        "line": 77
+      },
+      {
+        "name": "ResearchPlannerAgent",
+        "line": 81
+      },
+      {
+        "name": "DiscoveryRequest",
+        "line": 100
+      },
+      {
+        "name": "DiscoveryResponse",
+        "line": 104
+      },
+      {
+        "name": "DiscoveryAgent",
+        "line": 108
+      },
+      {
+        "name": "VerificationRequest",
+        "line": 126
+      },
+      {
+        "name": "VerificationResponse",
+        "line": 131
+      },
+      {
+        "name": "VerificationAgent",
+        "line": 136
+      },
+      {
+        "name": "RetrievalAgentRequest",
+        "line": 155
+      },
+      {
+        "name": "RetrievalAgentResponse",
+        "line": 161
+      },
+      {
+        "name": "RetrievalAgent",
+        "line": 167
+      },
+      {
+        "name": "EvidenceAgentRequest",
+        "line": 186
+      },
+      {
+        "name": "EvidenceAgentResponse",
+        "line": 195
+      },
+      {
+        "name": "EvidenceAgent",
+        "line": 199
+      },
+      {
+        "name": "ClaimAgent",
+        "line": 221
+      },
+      {
+        "name": "_make_error_response",
+        "line": 60
+      },
+      {
+        "name": "_execute",
+        "line": 63
+      },
+      {
+        "name": "_make_error_response",
+        "line": 84
+      },
+      {
+        "name": "_execute",
+        "line": 87
+      },
+      {
+        "name": "_make_error_response",
+        "line": 111
+      },
+      {
+        "name": "_execute",
+        "line": 114
+      },
+      {
+        "name": "_make_error_response",
+        "line": 139
+      },
+      {
+        "name": "_execute",
+        "line": 142
+      },
+      {
+        "name": "_make_error_response",
+        "line": 170
+      },
+      {
+        "name": "_execute",
+        "line": 173
+      },
+      {
+        "name": "_make_error_response",
+        "line": 202
+      },
+      {
+        "name": "_execute",
+        "line": 205
+      }
+    ]
+  },
+  {
+    "path": "src/agents/synthesis.py",
+    "lines": 114,
+    "sha256": "d9923bb23ea6c342a5fbd1d613616d200b6f526a934b5c5e1ccf706eac23a2f8",
+    "symbols": [
+      {
+        "name": "SynthesisRequest",
+        "line": 37
+      },
+      {
+        "name": "SynthesisResponse",
+        "line": 45
+      },
+      {
+        "name": "SynthesisAgent",
+        "line": 53
+      },
+      {
+        "name": "_make_error_response",
+        "line": 58
+      },
+      {
+        "name": "_statement",
+        "line": 62
+      },
+      {
+        "name": "_execute",
+        "line": 68
+      }
+    ]
+  },
+  {
+    "path": "src/agents/writer.py",
+    "lines": 200,
+    "sha256": "01049579ad08295b839548f6cc0658610e1dd15694da987ae3c2c254818a5642",
+    "symbols": [
+      {
+        "name": "WriterRequest",
+        "line": 46
+      },
+      {
+        "name": "WriterResponse",
+        "line": 56
+      },
+      {
+        "name": "WriterAgent",
+        "line": 72
+      },
+      {
+        "name": "_make_error_response",
+        "line": 77
+      },
+      {
+        "name": "_resolve_style",
+        "line": 81
+      },
+      {
+        "name": "_execute",
+        "line": 87
+      },
+      {
+        "name": "_citations_for",
+        "line": 173
+      }
+    ]
+  },
+  {
+    "path": "src/context/__init__.py",
+    "lines": 32,
+    "sha256": "39fc8cd5fe203916470bcb92bfea3a95c01aa51a40f729d5646377ade9a46be1",
+    "symbols": []
+  },
+  {
+    "path": "src/context/budget.py",
+    "lines": 77,
+    "sha256": "0be8ea80060a86725923d14b87e563ef11ec1ee859d55958ee5f3757f19633db",
+    "symbols": [
+      {
+        "name": "ContextBudget",
+        "line": 23
+      },
+      {
+        "name": "budget_for",
+        "line": 61
+      }
+    ]
+  },
+  {
+    "path": "src/context/classifier.py",
+    "lines": 219,
+    "sha256": "39ab6c1e8eb97a6cc7eecab8aea542c8c0de5732ef1b3783f8abe104f46e6d0e",
+    "symbols": [
+      {
+        "name": "TaskCategory",
+        "line": 21
+      },
+      {
+        "name": "_normalize",
+        "line": 182
+      },
+      {
+        "name": "classify_task",
+        "line": 187
+      }
+    ]
+  },
+  {
+    "path": "src/context/dry_run.py",
+    "lines": 311,
+    "sha256": "a7891ffc4fceb24bc09980eee3de654a19c07508c65e253c299318022791e403",
+    "symbols": [
+      {
+        "name": "_read_size",
+        "line": 87
+      },
+      {
+        "name": "build_candidate_pool",
+        "line": 96
+      },
+      {
+        "name": "_priority_for",
+        "line": 154
+      },
+      {
+        "name": "run_dry_run",
+        "line": 183
+      },
+      {
+        "name": "report_reduction",
+        "line": 219
+      },
+      {
+        "name": "format_report",
+        "line": 237
+      },
+      {
+        "name": "_naive_before",
+        "line": 259
+      },
+      {
+        "name": "main",
+        "line": 264
+      }
+    ]
+  },
+  {
+    "path": "src/context/loader.py",
+    "lines": 245,
+    "sha256": "4074aab8607b4ec69005b73261375d64285601e1dea24ba916c225307de0012e",
+    "symbols": [
+      {
+        "name": "ContextDocument",
+        "line": 88
+      },
+      {
+        "name": "ContextLoader",
+        "line": 125
+      },
+      {
+        "name": "__init__",
+        "line": 106
+      },
+      {
+        "name": "estimated_tokens",
+        "line": 113
+      },
+      {
+        "name": "__repr__",
+        "line": 117
+      },
+      {
+        "name": "__init__",
+        "line": 128
+      },
+      {
+        "name": "_estimate",
+        "line": 151
+      },
+      {
+        "name": "select",
+        "line": 154
+      },
+      {
+        "name": "default_rules",
+        "line": 243
+      }
+    ]
+  },
+  {
+    "path": "src/context/manifest.py",
+    "lines": 112,
+    "sha256": "9ee9cba5106b1e4fbb30d7e9d23d1d4cf676b880bcd6fd397b55473e8ad2916a",
+    "symbols": [
+      {
+        "name": "ManifestEntry",
+        "line": 23
+      },
+      {
+        "name": "ContextManifest",
+        "line": 57
+      },
+      {
+        "name": "to_dict",
+        "line": 46
+      },
+      {
+        "name": "files_selected",
+        "line": 88
+      },
+      {
+        "name": "files_skipped",
+        "line": 92
+      },
+      {
+        "name": "to_dict",
+        "line": 95
+      },
+      {
+        "name": "to_json",
+        "line": 108
+      }
+    ]
+  },
+  {
+    "path": "src/context/priority.py",
+    "lines": 71,
+    "sha256": "3c289f423e1202f332c7b15bb33fd286d685dc4a7608e6c7a744ef583c790a7b",
+    "symbols": [
+      {
+        "name": "Priority",
+        "line": 19
+      },
+      {
+        "name": "ContextPriority",
+        "line": 49
+      },
+      {
+        "name": "__init__",
+        "line": 65
+      },
+      {
+        "name": "__repr__",
+        "line": 70
+      }
+    ]
+  },
+  {
+    "path": "src/core/__init__.py",
+    "lines": 10,
+    "sha256": "3b873f6e7ce7b8aff02cb52b99f9920080078ed8c1aeddc2645f489f2f04cb1e",
+    "symbols": []
+  },
+  {
+    "path": "src/core/claim_registry.py",
+    "lines": 110,
+    "sha256": "0ca28aabc323e0d34ff5b986fb56f0d0d362ec7fb8466a7818dbafbdcbeeb0f3",
+    "symbols": [
+      {
+        "name": "ClaimRegistry",
+        "line": 28
+      },
+      {
+        "name": "__init__",
+        "line": 39
+      },
+      {
+        "name": "_artifact_path",
+        "line": 46
+      },
+      {
+        "name": "add",
+        "line": 50
+      },
+      {
+        "name": "get",
+        "line": 61
+      },
+      {
+        "name": "all",
+        "line": 64
+      },
+      {
+        "name": "writable",
+        "line": 67
+      },
+      {
+        "name": "unsupported_important",
+        "line": 71
+      },
+      {
+        "name": "save",
+        "line": 80
+      },
+      {
+        "name": "load",
+        "line": 94
+      }
+    ]
+  },
+  {
+    "path": "src/core/config.py",
+    "lines": 357,
+    "sha256": "7a70c465f1dbf2a7c27380e9fcc0d3b96da9487442e31dd765c6b28cf92a5188",
+    "symbols": [
+      {
+        "name": "_Section",
+        "line": 61
+      },
+      {
+        "name": "SystemSection",
+        "line": 67
+      },
+      {
+        "name": "LoggingSection",
+        "line": 73
+      },
+      {
+        "name": "ResearchSection",
+        "line": 100
+      },
+      {
+        "name": "ProjectsSection",
+        "line": 111
+      },
+      {
+        "name": "VerificationSection",
+        "line": 116
+      },
+      {
+        "name": "EvidenceSection",
+        "line": 129
+      },
+      {
+        "name": "WritingSection",
+        "line": 143
+      },
+      {
+        "name": "ModelRoutingSection",
+        "line": 157
+      },
+      {
+        "name": "ToolSection",
+        "line": 172
+      },
+      {
+        "name": "SystemConfig",
+        "line": 195
+      },
+      {
+        "name": "_read_yaml",
+        "line": 226
+      },
+      {
+        "name": "_deep_merge",
+        "line": 242
+      },
+      {
+        "name": "_coerce_scalar",
+        "line": 254
+      },
+      {
+        "name": "_env_overlay",
+        "line": 268
+      },
+      {
+        "name": "load_config",
+        "line": 288
+      },
+      {
+        "name": "_cached_config",
+        "line": 346
+      },
+      {
+        "name": "get_config",
+        "line": 350
+      },
+      {
+        "name": "reset_config_cache",
+        "line": 355
+      },
+      {
+        "name": "_upper",
+        "line": 84
+      },
+      {
+        "name": "_lower",
+        "line": 89
+      },
+      {
+        "name": "_bare_filename",
+        "line": 94
+      },
+      {
+        "name": "api_key",
+        "line": 167
+      },
+      {
+        "name": "api_key",
+        "line": 187
+      },
+      {
+        "name": "contact_email",
+        "line": 191
+      },
+      {
+        "name": "tool",
+        "line": 211
+      },
+      {
+        "name": "to_dict",
+        "line": 219
+      }
+    ]
+  },
+  {
+    "path": "src/core/errors.py",
+    "lines": 135,
+    "sha256": "8548e69fd1b2c044f6ce26f559354f8e7413e95153f2c7bb22545061ccbeb755",
+    "symbols": [
+      {
+        "name": "AutonomiError",
+        "line": 27
+      },
+      {
+        "name": "ConfigurationError",
+        "line": 45
+      },
+      {
+        "name": "PathSafetyError",
+        "line": 49
+      },
+      {
+        "name": "SchemaValidationError",
+        "line": 57
+      },
+      {
+        "name": "StateTransitionError",
+        "line": 61
+      },
+      {
+        "name": "ProjectError",
+        "line": 65
+      },
+      {
+        "name": "IntegrationError",
+        "line": 69
+      },
+      {
+        "name": "CapabilityNotImplementedError",
+        "line": 73
+      },
+      {
+        "name": "CapabilityNotConfiguredError",
+        "line": 81
+      },
+      {
+        "name": "CapabilityUnavailableError",
+        "line": 85
+      },
+      {
+        "name": "HumanReviewRequired",
+        "line": 89
+      },
+      {
+        "name": "__init__",
+        "line": 30
+      },
+      {
+        "name": "__str__",
+        "line": 35
+      },
+      {
+        "name": "to_dict",
+        "line": 41
+      },
+      {
+        "name": "__init__",
+        "line": 95
+      },
+      {
+        "name": "to_dict",
+        "line": 112
+      },
+      {
+        "name": "render",
+        "line": 125
+      }
+    ]
+  },
+  {
+    "path": "src/core/evidence_registry.py",
+    "lines": 116,
+    "sha256": "5d6b0e8656fc2205e816629956d292aaef97a6b891ffef51faef5d678a123e7d",
+    "symbols": [
+      {
+        "name": "EvidenceRegistry",
+        "line": 29
+      },
+      {
+        "name": "__init__",
+        "line": 40
+      },
+      {
+        "name": "_artifact_path",
+        "line": 46
+      },
+      {
+        "name": "add",
+        "line": 50
+      },
+      {
+        "name": "get",
+        "line": 61
+      },
+      {
+        "name": "for_claim",
+        "line": 64
+      },
+      {
+        "name": "for_source",
+        "line": 67
+      },
+      {
+        "name": "all",
+        "line": 70
+      },
+      {
+        "name": "save",
+        "line": 74
+      },
+      {
+        "name": "load",
+        "line": 101
+      }
+    ]
+  },
+  {
+    "path": "src/core/logging.py",
+    "lines": 210,
+    "sha256": "354e28770eb0fd8633b06ec1447a06a5a6e388ad4431d661be2031dc8cb3ccac",
+    "symbols": [
+      {
+        "name": "_JSONFormatter",
+        "line": 37
+      },
+      {
+        "name": "_TextFormatter",
+        "line": 85
+      },
+      {
+        "name": "setup_logging",
+        "line": 95
+      },
+      {
+        "name": "get_logger",
+        "line": 182
+      },
+      {
+        "name": "reset_logging",
+        "line": 201
+      },
+      {
+        "name": "format",
+        "line": 40
+      },
+      {
+        "name": "format",
+        "line": 88
+      }
+    ]
+  },
+  {
+    "path": "src/core/paths.py",
+    "lines": 318,
+    "sha256": "588db01ad2b351c1d1f1e8b17acd69b244e602439b6dfc49add17e962e6be707",
+    "symbols": [
+      {
+        "name": "PathResolutionError",
+        "line": 64
+      },
+      {
+        "name": "_as_dir",
+        "line": 68
+      },
+      {
+        "name": "_looks_like_system_root",
+        "line": 72
+      },
+      {
+        "name": "_discover_system_root",
+        "line": 83
+      },
+      {
+        "name": "_resolve_roots",
+        "line": 97
+      },
+      {
+        "name": "SystemPaths",
+        "line": 119
+      },
+      {
+        "name": "_cached_paths",
+        "line": 279
+      },
+      {
+        "name": "get_paths",
+        "line": 284
+      },
+      {
+        "name": "reset_paths_cache",
+        "line": 297
+      },
+      {
+        "name": "iter_existing",
+        "line": 302
+      },
+      {
+        "name": "src_dir",
+        "line": 135
+      },
+      {
+        "name": "tests_dir",
+        "line": 139
+      },
+      {
+        "name": "docs_dir",
+        "line": 143
+      },
+      {
+        "name": "prompts_dir",
+        "line": 147
+      },
+      {
+        "name": "config_dir",
+        "line": 152
+      },
+      {
+        "name": "database_dir",
+        "line": 156
+      },
+      {
+        "name": "cache_dir",
+        "line": 160
+      },
+      {
+        "name": "logs_dir",
+        "line": 164
+      },
+      {
+        "name": "state_dir",
+        "line": 168
+      },
+      {
+        "name": "runtime_dir",
+        "line": 173
+      },
+      {
+        "name": "system_config_file",
+        "line": 178
+      },
+      {
+        "name": "dotenv_file",
+        "line": 182
+      },
+      {
+        "name": "project_index_file",
+        "line": 186
+      },
+      {
+        "name": "spec_file",
+        "line": 191
+      },
+      {
+        "name": "missing_spec_files",
+        "line": 196
+      },
+      {
+        "name": "missing_supplementary_docs",
+        "line": 199
+      },
+      {
+        "name": "project_workspaces",
+        "line": 203
+      },
+      {
+        "name": "workspace_path",
+        "line": 216
+      },
+      {
+        "name": "is_inside_workspace",
+        "line": 227
+      },
+      {
+        "name": "is_inside_system_root",
+        "line": 234
+      },
+      {
+        "name": "relative",
+        "line": 241
+      },
+      {
+        "name": "storage_dirs",
+        "line": 249
+      },
+      {
+        "name": "ensure_storage_dirs",
+        "line": 252
+      },
+      {
+        "name": "describe",
+        "line": 261
+      }
+    ]
+  },
+  {
+    "path": "src/core/project_manager.py",
+    "lines": 348,
+    "sha256": "43357a2b9acd04308db896003d72e6bb903894fe5fbe93741cee617cfdcf45ef",
+    "symbols": [
+      {
+        "name": "_slugify",
+        "line": 45
+      },
+      {
+        "name": "ProjectManager",
+        "line": 55
+      },
+      {
+        "name": "_get_manager",
+        "line": 309
+      },
+      {
+        "name": "create_project",
+        "line": 316
+      },
+      {
+        "name": "load_project",
+        "line": 336
+      },
+      {
+        "name": "list_projects",
+        "line": 341
+      },
+      {
+        "name": "__init__",
+        "line": 66
+      },
+      {
+        "name": "create",
+        "line": 76
+      },
+      {
+        "name": "load",
+        "line": 196
+      },
+      {
+        "name": "save",
+        "line": 237
+      },
+      {
+        "name": "list_workspace",
+        "line": 248
+      },
+      {
+        "name": "list_all",
+        "line": 274
+      },
+      {
+        "name": "_resolve_workspace",
+        "line": 294
+      }
+    ]
+  },
+  {
+    "path": "src/core/status.py",
+    "lines": 51,
+    "sha256": "bf2d02fefee0ea2ffab9c6c7b31ac57e4c3e5dc9573d3cadaf36da71c746d469",
+    "symbols": [
+      {
+        "name": "IntegrationStatus",
+        "line": 16
+      },
+      {
+        "name": "is_usable",
+        "line": 45
+      }
+    ]
+  },
+  {
+    "path": "src/core/storage.py",
+    "lines": 196,
+    "sha256": "317bd56f037e6b0b0fc776c581f9cb86fcf6d03b9277bcc2d78afcbb408fc93c",
+    "symbols": [
+      {
+        "name": "ensure_within",
+        "line": 43
+      },
+      {
+        "name": "atomic_write_text",
+        "line": 70
+      },
+      {
+        "name": "write_json",
+        "line": 111
+      },
+      {
+        "name": "read_json",
+        "line": 132
+      },
+      {
+        "name": "append_jsonl",
+        "line": 137
+      },
+      {
+        "name": "read_jsonl",
+        "line": 170
+      },
+      {
+        "name": "backup_file",
+        "line": 183
+      }
+    ]
+  },
+  {
+    "path": "src/routing/__init__.py",
+    "lines": 16,
+    "sha256": "90da405820dc3f2cf49031f9c55bcd843ab8061c523889fcfa2b28920aef6558",
+    "symbols": []
+  },
+  {
+    "path": "src/routing/model_router.py",
+    "lines": 182,
+    "sha256": "ff6e18ace98dd45457ce4137d01bf7ab346b1be4c08ed3d6abd7a06ddbb74b55",
+    "symbols": [
+      {
+        "name": "ModelCapability",
+        "line": 48
+      },
+      {
+        "name": "ModelRequest",
+        "line": 67
+      },
+      {
+        "name": "ModelResponse",
+        "line": 96
+      },
+      {
+        "name": "ModelRouterTool",
+        "line": 117
+      },
+      {
+        "name": "resolve_model_for_capability",
+        "line": 180
+      },
+      {
+        "name": "status",
+        "line": 139
+      },
+      {
+        "name": "_execute",
+        "line": 160
+      }
+    ]
+  },
+  {
+    "path": "src/routing/telemetry.py",
+    "lines": 31,
+    "sha256": "279b43ae60db8e69c6c31db0079145b0fdd32ad46543d912936833916210e414",
+    "symbols": [
+      {
+        "name": "record_model_telemetry",
+        "line": 13
+      }
+    ]
+  },
+  {
+    "path": "src/runtime/__init__.py",
+    "lines": 12,
+    "sha256": "9fac089ef3590bc03c31e5a7a3f60a8a641a7355a8c9190a903a82770d607c28",
+    "symbols": []
+  },
+  {
+    "path": "src/runtime/bootstrap.py",
+    "lines": 239,
+    "sha256": "ab766bf8fec58e213c12b3588ced6833e4857be797a45043118cebbff1811c38",
+    "symbols": [
+      {
+        "name": "ensure_storage_dirs",
+        "line": 37
+      },
+      {
+        "name": "health_check",
+        "line": 50
+      },
+      {
+        "name": "bootstrap",
+        "line": 135
+      },
+      {
+        "name": "main",
+        "line": 207
+      }
+    ]
+  },
+  {
+    "path": "src/runtime/cli.py",
+    "lines": 135,
+    "sha256": "0d4ad74c735a62e58cc2cfab2c944bb4563bf5456b15f1b395fa4b47a3110f04",
+    "symbols": [
+      {
+        "name": "_json",
+        "line": 25
+      },
+      {
+        "name": "_read_json",
+        "line": 29
+      },
+      {
+        "name": "_project_from_payload",
+        "line": 33
+      },
+      {
+        "name": "_cmd_check",
+        "line": 49
+      },
+      {
+        "name": "_cmd_plan",
+        "line": 58
+      },
+      {
+        "name": "_cmd_run_academic",
+        "line": 74
+      },
+      {
+        "name": "build_parser",
+        "line": 96
+      },
+      {
+        "name": "main",
+        "line": 123
+      }
+    ]
+  },
+  {
+    "path": "src/runtime/monitor.py",
+    "lines": 222,
+    "sha256": "8e30e0eeab84b16c476b65cde74cb60ce57e225041070faa0460fe40327dcaa5",
+    "symbols": [
+      {
+        "name": "_json",
+        "line": 116
+      },
+      {
+        "name": "_project_from_payload",
+        "line": 120
+      },
+      {
+        "name": "_plan",
+        "line": 136
+      },
+      {
+        "name": "MonitorHandler",
+        "line": 146
+      },
+      {
+        "name": "create_handler",
+        "line": 210
+      },
+      {
+        "name": "serve",
+        "line": 214
+      },
+      {
+        "name": "_send",
+        "line": 147
+      },
+      {
+        "name": "_json",
+        "line": 158
+      },
+      {
+        "name": "do_OPTIONS",
+        "line": 161
+      },
+      {
+        "name": "do_GET",
+        "line": 164
+      },
+      {
+        "name": "do_POST",
+        "line": 186
+      },
+      {
+        "name": "log_message",
+        "line": 206
+      }
+    ]
+  },
+  {
+    "path": "src/runtime/progress.py",
+    "lines": 30,
+    "sha256": "b528dea525e95a005e78a92f91588c87aec93fdf3de7e8a65cb43604530ceef8",
+    "symbols": [
+      {
+        "name": "progress_file",
+        "line": 15
+      },
+      {
+        "name": "record_progress",
+        "line": 20
+      },
+      {
+        "name": "read_progress",
+        "line": 29
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/__init__.py",
+    "lines": 16,
+    "sha256": "80b8af1880df66a8dca9fa83e081b8762300d2e6891326d5c3c1e2c33590b0da",
+    "symbols": []
+  },
+  {
+    "path": "src/schemas/base.py",
+    "lines": 226,
+    "sha256": "0e270dfef38ac1e42223b39002766d5a3d19e4e90c843b8140f5a0b2f37da4e5",
+    "symbols": [
+      {
+        "name": "utc_now",
+        "line": 35
+      },
+      {
+        "name": "new_id",
+        "line": 40
+      },
+      {
+        "name": "SchemaModel",
+        "line": 54
+      },
+      {
+        "name": "Provenance",
+        "line": 82
+      },
+      {
+        "name": "StateTransition",
+        "line": 105
+      },
+      {
+        "name": "ErrorInfo",
+        "line": 123
+      },
+      {
+        "name": "BaseRecord",
+        "line": 137
+      },
+      {
+        "name": "validate_record",
+        "line": 200
+      },
+      {
+        "name": "dump_jsonl",
+        "line": 205
+      },
+      {
+        "name": "load_jsonl",
+        "line": 210
+      },
+      {
+        "name": "to_dict",
+        "line": 63
+      },
+      {
+        "name": "to_json",
+        "line": 67
+      },
+      {
+        "name": "from_dict",
+        "line": 71
+      },
+      {
+        "name": "_ser_retrieved_at",
+        "line": 101
+      },
+      {
+        "name": "_ser_at",
+        "line": 119
+      },
+      {
+        "name": "_ser_at",
+        "line": 133
+      },
+      {
+        "name": "model_post_init",
+        "line": 154
+      },
+      {
+        "name": "_ser_timestamps",
+        "line": 160
+      },
+      {
+        "name": "touch",
+        "line": 163
+      },
+      {
+        "name": "record_transition",
+        "line": 167
+      },
+      {
+        "name": "record_error",
+        "line": 183
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/citation.py",
+    "lines": 78,
+    "sha256": "e87571a8387aabc2da1a59493737b3966b08991d6ea550e4ed18386dc7f8f3f0",
+    "symbols": [
+      {
+        "name": "CitationStyle",
+        "line": 30
+      },
+      {
+        "name": "InTextCitation",
+        "line": 36
+      },
+      {
+        "name": "ReferenceEntry",
+        "line": 53
+      },
+      {
+        "name": "ReferenceList",
+        "line": 67
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/claim.py",
+    "lines": 256,
+    "sha256": "6930cd4689ab71db545039495f4e66f263e74bf3a3c1df52ca5a345c8f370a59",
+    "symbols": [
+      {
+        "name": "ClaimImportance",
+        "line": 38
+      },
+      {
+        "name": "ClaimStatus",
+        "line": 55
+      },
+      {
+        "name": "SupportLevel",
+        "line": 81
+      },
+      {
+        "name": "Claim",
+        "line": 96
+      },
+      {
+        "name": "model_post_init",
+        "line": 143
+      },
+      {
+        "name": "is_important",
+        "line": 153
+      },
+      {
+        "name": "has_conflict",
+        "line": 158
+      },
+      {
+        "name": "is_writable",
+        "line": 162
+      },
+      {
+        "name": "unmet_source_requirement",
+        "line": 174
+      },
+      {
+        "name": "attach_support",
+        "line": 179
+      },
+      {
+        "name": "attach_contradiction",
+        "line": 187
+      },
+      {
+        "name": "transition_to",
+        "line": 196
+      },
+      {
+        "name": "mark_insufficient",
+        "line": 240
+      },
+      {
+        "name": "request_review",
+        "line": 252
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/evidence.py",
+    "lines": 260,
+    "sha256": "d2bceee875a384ec89a5f18e1121994d472314051939673343062c64aa2f7cbf",
+    "symbols": [
+      {
+        "name": "EvidenceRelationship",
+        "line": 32
+      },
+      {
+        "name": "EvidenceStrength",
+        "line": 41
+      },
+      {
+        "name": "ExtractionMethod",
+        "line": 58
+      },
+      {
+        "name": "EvidenceLocation",
+        "line": 79
+      },
+      {
+        "name": "Evidence",
+        "line": 135
+      },
+      {
+        "name": "_check_offsets",
+        "line": 102
+      },
+      {
+        "name": "is_precise",
+        "line": 112
+      },
+      {
+        "name": "describe",
+        "line": 119
+      },
+      {
+        "name": "_sync_verbatim_flag",
+        "line": 183
+      },
+      {
+        "name": "is_supporting",
+        "line": 190
+      },
+      {
+        "name": "is_citable_quotation",
+        "line": 194
+      },
+      {
+        "name": "mark_quote_verified",
+        "line": 202
+      },
+      {
+        "name": "max_claim_strength",
+        "line": 243
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/outline.py",
+    "lines": 107,
+    "sha256": "6e43d9f1c1800a78d6e7658db343c36d90928cfa37e97d2bdd66e5beadda289e",
+    "symbols": [
+      {
+        "name": "OutlineStatus",
+        "line": 24
+      },
+      {
+        "name": "OutlineSection",
+        "line": 32
+      },
+      {
+        "name": "Outline",
+        "line": 50
+      },
+      {
+        "name": "_check_unique_claims",
+        "line": 63
+      },
+      {
+        "name": "claim_ids",
+        "line": 80
+      },
+      {
+        "name": "transition_to",
+        "line": 93
+      },
+      {
+        "name": "walk",
+        "line": 67
+      },
+      {
+        "name": "walk",
+        "line": 83
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/project.py",
+    "lines": 122,
+    "sha256": "357204ce5c5a89cc5c59223943ba7ad0f707d21535d56018a831662f7f8a2df9",
+    "symbols": [
+      {
+        "name": "ProjectArtifact",
+        "line": 34
+      },
+      {
+        "name": "Project",
+        "line": 61
+      },
+      {
+        "name": "directory",
+        "line": 105
+      },
+      {
+        "name": "artifact_path",
+        "line": 109
+      },
+      {
+        "name": "sync_task_state",
+        "line": 114
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/source.py",
+    "lines": 181,
+    "sha256": "222878028dd7f518726902533e84c2233b0d1b02ef962bba9946072abdab23b5",
+    "symbols": [
+      {
+        "name": "SourceState",
+        "line": 33
+      },
+      {
+        "name": "SourceType",
+        "line": 52
+      },
+      {
+        "name": "is_verified",
+        "line": 66
+      },
+      {
+        "name": "is_approved",
+        "line": 80
+      },
+      {
+        "name": "Source",
+        "line": 85
+      },
+      {
+        "name": "transition_to",
+        "line": 134
+      },
+      {
+        "name": "add_verification_note",
+        "line": 150
+      },
+      {
+        "name": "approve",
+        "line": 155
+      },
+      {
+        "name": "reject",
+        "line": 159
+      },
+      {
+        "name": "request_review",
+        "line": 164
+      },
+      {
+        "name": "is_foundational",
+        "line": 168
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/synthesis.py",
+    "lines": 55,
+    "sha256": "31398fb5a8d4653b3c510d46f25891548d7c8d760fa11cc55a7f3ade71ccd9b0",
+    "symbols": [
+      {
+        "name": "SynthesisStatus",
+        "line": 24
+      },
+      {
+        "name": "SynthesisFinding",
+        "line": 31
+      },
+      {
+        "name": "Synthesis",
+        "line": 46
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/task.py",
+    "lines": 156,
+    "sha256": "9ea5a5365d39affdbee404fcfcd66f5cdec4f7c85c717bce7d6f28a0e1add9cd",
+    "symbols": [
+      {
+        "name": "TaskState",
+        "line": 32
+      },
+      {
+        "name": "ResearchMode",
+        "line": 54
+      },
+      {
+        "name": "is_terminal_state",
+        "line": 80
+      },
+      {
+        "name": "is_failure_state",
+        "line": 84
+      },
+      {
+        "name": "Task",
+        "line": 88
+      },
+      {
+        "name": "transition_to",
+        "line": 119
+      },
+      {
+        "name": "mark_completed",
+        "line": 145
+      },
+      {
+        "name": "mark_failed",
+        "line": 149
+      },
+      {
+        "name": "request_review",
+        "line": 154
+      }
+    ]
+  },
+  {
+    "path": "src/schemas/verification.py",
+    "lines": 163,
+    "sha256": "21435c61505569332ca8ef27720519aeb0cc785d4845d569a8ba09241bfd809c",
+    "symbols": [
+      {
+        "name": "VerificationLevel",
+        "line": 39
+      },
+      {
+        "name": "VerificationCheckStatus",
+        "line": 58
+      },
+      {
+        "name": "VerificationCheck",
+        "line": 69
+      },
+      {
+        "name": "VerificationReport",
+        "line": 99
+      },
+      {
+        "name": "add_check",
+        "line": 133
+      },
+      {
+        "name": "level_status",
+        "line": 139
+      },
+      {
+        "name": "_recompute_levels",
+        "line": 157
+      },
+      {
+        "name": "add_error",
+        "line": 161
+      }
+    ]
+  },
+  {
+    "path": "src/tools/__init__.py",
+    "lines": 44,
+    "sha256": "0edb8b12ba6d3666ac3b1f84af91138844b5ad9520c57ab7571a3f34c44f8c0a",
+    "symbols": []
+  },
+  {
+    "path": "src/tools/base.py",
+    "lines": 228,
+    "sha256": "ce8ebed1476607dd0ebc8c5fd9f6327dddd2bfe7846d07fd91e5f3e81d5f4a80",
+    "symbols": [
+      {
+        "name": "ToolRequest",
+        "line": 40
+      },
+      {
+        "name": "ToolResponse",
+        "line": 46
+      },
+      {
+        "name": "BaseTool",
+        "line": 97
+      },
+      {
+        "name": "failure",
+        "line": 75
+      },
+      {
+        "name": "__init__",
+        "line": 117
+      },
+      {
+        "name": "status",
+        "line": 122
+      },
+      {
+        "name": "is_available",
+        "line": 131
+      },
+      {
+        "name": "execute",
+        "line": 136
+      },
+      {
+        "name": "_execute",
+        "line": 202
+      },
+      {
+        "name": "_failure",
+        "line": 206
+      },
+      {
+        "name": "describe",
+        "line": 222
+      }
+    ]
+  },
+  {
+    "path": "src/tools/citation_manager.py",
+    "lines": 102,
+    "sha256": "ce71a6ecb49d3eb1aa0d451dc2f9340c985c598349e036e84431731fff287c03",
+    "symbols": [
+      {
+        "name": "CitationManager",
+        "line": 30
+      },
+      {
+        "name": "detect_orphan_citations",
+        "line": 91
+      },
+      {
+        "name": "__init__",
+        "line": 33
+      },
+      {
+        "name": "register_source",
+        "line": 39
+      },
+      {
+        "name": "resolve",
+        "line": 62
+      },
+      {
+        "name": "citation_key_for_source",
+        "line": 66
+      },
+      {
+        "name": "cited_sources",
+        "line": 70
+      },
+      {
+        "name": "known_keys",
+        "line": 74
+      },
+      {
+        "name": "detect_orphan_citations",
+        "line": 77
+      }
+    ]
+  },
+  {
+    "path": "src/tools/crossref.py",
+    "lines": 173,
+    "sha256": "d3fe8405f622070e06ccfddd09ba79a7fdbc12b5c4c5daa47450ae2968932b7f",
+    "symbols": [
+      {
+        "name": "CrossrefTool",
+        "line": 33
+      },
+      {
+        "name": "_client",
+        "line": 47
+      },
+      {
+        "name": "_timeout",
+        "line": 56
+      },
+      {
+        "name": "_build_params",
+        "line": 59
+      },
+      {
+        "name": "_item_to_source",
+        "line": 73
+      },
+      {
+        "name": "_search",
+        "line": 112
+      },
+      {
+        "name": "lookup_by_doi",
+        "line": 128
+      },
+      {
+        "name": "lookup_by_bibliographic",
+        "line": 147
+      }
+    ]
+  },
+  {
+    "path": "src/tools/dedupe.py",
+    "lines": 111,
+    "sha256": "ca9130851420efd46c35ece5dfce2a115c665069ffbba7cf45f7fbb0384b4aec",
+    "symbols": [
+      {
+        "name": "dedupe_key",
+        "line": 25
+      },
+      {
+        "name": "_completeness",
+        "line": 42
+      },
+      {
+        "name": "_merge",
+        "line": 60
+      },
+      {
+        "name": "deduplicate",
+        "line": 87
+      }
+    ]
+  },
+  {
+    "path": "src/tools/docx_generator.py",
+    "lines": 69,
+    "sha256": "f0a0a01170002caf286a77e4c4f5a83d8e167d12ed01f2ce94be6844cfa19519",
+    "symbols": [
+      {
+        "name": "DocxGenerationRequest",
+        "line": 17
+      },
+      {
+        "name": "DocxGenerationResponse",
+        "line": 25
+      },
+      {
+        "name": "DocxGenerationTool",
+        "line": 30
+      },
+      {
+        "name": "_execute",
+        "line": 34
+      },
+      {
+        "name": "_add_markdown",
+        "line": 54
+      }
+    ]
+  },
+  {
+    "path": "src/tools/evidence_extractor.py",
+    "lines": 179,
+    "sha256": "eca6d2f5708ec6c3005becb0665ea07d8d7c2dd594f8671df77770fee274e893",
+    "symbols": [
+      {
+        "name": "_normalize",
+        "line": 37
+      },
+      {
+        "name": "ExtractionResult",
+        "line": 43
+      },
+      {
+        "name": "EvidenceExtractor",
+        "line": 61
+      },
+      {
+        "name": "extract_verbatim",
+        "line": 158
+      },
+      {
+        "name": "extract_verbatim",
+        "line": 70
+      },
+      {
+        "name": "record_paraphrase",
+        "line": 125
+      }
+    ]
+  },
+  {
+    "path": "src/tools/http_client.py",
+    "lines": 249,
+    "sha256": "ee70b3e25824ba6cb7988312acff916e95db6291466e8ec84e43f2f2fed80a07",
+    "symbols": [
+      {
+        "name": "build_user_agent",
+        "line": 52
+      },
+      {
+        "name": "HttpResult",
+        "line": 61
+      },
+      {
+        "name": "HttpClient",
+        "line": 85
+      },
+      {
+        "name": "json",
+        "line": 71
+      },
+      {
+        "name": "__init__",
+        "line": 88
+      },
+      {
+        "name": "_headers",
+        "line": 104
+      },
+      {
+        "name": "_build_url",
+        "line": 116
+      },
+      {
+        "name": "request",
+        "line": 127
+      },
+      {
+        "name": "_single_request",
+        "line": 177
+      },
+      {
+        "name": "get_json",
+        "line": 206
+      },
+      {
+        "name": "_backoff",
+        "line": 223
+      },
+      {
+        "name": "_to_integration_error",
+        "line": 237
+      }
+    ]
+  },
+  {
+    "path": "src/tools/openalex.py",
+    "lines": 163,
+    "sha256": "d80d942e45afca917d3bc9f9e45eb11ac0cee4120b00c372f70ec03665f38019",
+    "symbols": [
+      {
+        "name": "OpenAlexTool",
+        "line": 33
+      },
+      {
+        "name": "_client",
+        "line": 47
+      },
+      {
+        "name": "_build_params",
+        "line": 56
+      },
+      {
+        "name": "_item_to_source",
+        "line": 70
+      },
+      {
+        "name": "_search",
+        "line": 105
+      },
+      {
+        "name": "lookup_by_doi",
+        "line": 120
+      },
+      {
+        "name": "lookup_by_bibliographic",
+        "line": 138
+      }
+    ]
+  },
+  {
+    "path": "src/tools/publish_or_perish.py",
+    "lines": 659,
+    "sha256": "75967f80a94e2eed7940ef8af0f0cd557e342ad99341d1d3fc80fc637b9277c8",
+    "symbols": [
+      {
+        "name": "PublishOrPerishRequest",
+        "line": 204
+      },
+      {
+        "name": "PublishOrPerishResponse",
+        "line": 238
+      },
+      {
+        "name": "PublishOrPerishTool",
+        "line": 276
+      },
+      {
+        "name": "_executable",
+        "line": 289
+      },
+      {
+        "name": "status",
+        "line": 316
+      },
+      {
+        "name": "mark_verified",
+        "line": 338
+      },
+      {
+        "name": "capability_matrix",
+        "line": 359
+      },
+      {
+        "name": "to_sources",
+        "line": 371
+      },
+      {
+        "name": "_build_command",
+        "line": 390
+      },
+      {
+        "name": "_parse_jsonl",
+        "line": 450
+      },
+      {
+        "name": "_normalize",
+        "line": 476
+      },
+      {
+        "name": "_execute",
+        "line": 524
+      }
+    ]
+  },
+  {
+    "path": "src/tools/pubmed.py",
+    "lines": 156,
+    "sha256": "7c90453bb2523c0a4574e641f04ec04b7b5de0e8199803e296f066b3673862a7",
+    "symbols": [
+      {
+        "name": "PubMedTool",
+        "line": 33
+      },
+      {
+        "name": "_client",
+        "line": 48
+      },
+      {
+        "name": "_build_term",
+        "line": 57
+      },
+      {
+        "name": "_search",
+        "line": 66
+      },
+      {
+        "name": "_record_to_source",
+        "line": 111
+      },
+      {
+        "name": "_year_from_pubdate",
+        "line": 134
+      },
+      {
+        "name": "_type_from_pubtype",
+        "line": 144
+      }
+    ]
+  },
+  {
+    "path": "src/tools/reference_formatter.py",
+    "lines": 194,
+    "sha256": "79f4c74c246df7d7cac56eec12fecffdfe81cdd5e9d5d6e929ba1510975ba6a3",
+    "symbols": [
+      {
+        "name": "_surname",
+        "line": 40
+      },
+      {
+        "name": "_title_slug",
+        "line": 51
+      },
+      {
+        "name": "citation_key_for",
+        "line": 58
+      },
+      {
+        "name": "format_in_text_author_year",
+        "line": 73
+      },
+      {
+        "name": "_format_authors",
+        "line": 95
+      },
+      {
+        "name": "format_reference",
+        "line": 116
+      },
+      {
+        "name": "format_reference_list",
+        "line": 163
+      },
+      {
+        "name": "build_in_text_citation",
+        "line": 174
+      }
+    ]
+  },
+  {
+    "path": "src/tools/research_tool.py",
+    "lines": 204,
+    "sha256": "bd23bafee652b16024bb522111ee2d23cc6f0d3e2950e24a1d7389572ee987e6",
+    "symbols": [
+      {
+        "name": "ResearchRequest",
+        "line": 34
+      },
+      {
+        "name": "ResearchResponse",
+        "line": 44
+      },
+      {
+        "name": "ResearchTool",
+        "line": 81
+      },
+      {
+        "name": "status",
+        "line": 117
+      },
+      {
+        "name": "mark_verified",
+        "line": 123
+      },
+      {
+        "name": "capability_matrix",
+        "line": 133
+      },
+      {
+        "name": "_mark_capability",
+        "line": 143
+      },
+      {
+        "name": "_execute",
+        "line": 149
+      },
+      {
+        "name": "_search",
+        "line": 193
+      }
+    ]
+  },
+  {
+    "path": "src/tools/retrieval.py",
+    "lines": 191,
+    "sha256": "651cae735883e57fad65f0e1b6bc9d0b9145026d8f33f00b67df76033208ff88",
+    "symbols": [
+      {
+        "name": "_TextExtractor",
+        "line": 34
+      },
+      {
+        "name": "RetrievedPayload",
+        "line": 49
+      },
+      {
+        "name": "RetrievalRequest",
+        "line": 55
+      },
+      {
+        "name": "RetrievalResponse",
+        "line": 61
+      },
+      {
+        "name": "RetrievalTool",
+        "line": 71
+      },
+      {
+        "name": "_charset",
+        "line": 189
+      },
+      {
+        "name": "__init__",
+        "line": 35
+      },
+      {
+        "name": "handle_data",
+        "line": 39
+      },
+      {
+        "name": "text",
+        "line": 44
+      },
+      {
+        "name": "__init__",
+        "line": 77
+      },
+      {
+        "name": "_execute",
+        "line": 81
+      },
+      {
+        "name": "_fetch_url",
+        "line": 130
+      },
+      {
+        "name": "_parse",
+        "line": 140
+      },
+      {
+        "name": "_suffix",
+        "line": 152
+      },
+      {
+        "name": "_path",
+        "line": 161
+      },
+      {
+        "name": "_write_text",
+        "line": 165
+      },
+      {
+        "name": "_write_bytes",
+        "line": 168
+      }
+    ]
+  },
+  {
+    "path": "src/tools/semantic_scholar.py",
+    "lines": 127,
+    "sha256": "3819e900d5e089d11a05721809b704f70a45c0e03d7850d15f368e005b64cda3",
+    "symbols": [
+      {
+        "name": "SemanticScholarTool",
+        "line": 36
+      },
+      {
+        "name": "_client",
+        "line": 54
+      },
+      {
+        "name": "_build_params",
+        "line": 67
+      },
+      {
+        "name": "_item_to_source",
+        "line": 81
+      },
+      {
+        "name": "_first_publication_type",
+        "line": 106
+      },
+      {
+        "name": "_search",
+        "line": 115
+      }
+    ]
+  },
+  {
+    "path": "src/tools/source_mapper.py",
+    "lines": 310,
+    "sha256": "31dc06bb58e18b37a1d54dba776e42380725799b81defa068903b77c37b419dd",
+    "symbols": [
+      {
+        "name": "normalize_doi",
+        "line": 77
+      },
+      {
+        "name": "normalize_title",
+        "line": 101
+      },
+      {
+        "name": "normalize_authors",
+        "line": 110
+      },
+      {
+        "name": "coerce_source_type",
+        "line": 142
+      },
+      {
+        "name": "coerce_year",
+        "line": 152
+      },
+      {
+        "name": "source_from_dict",
+        "line": 175
+      },
+      {
+        "name": "_coerce_int",
+        "line": 262
+      },
+      {
+        "name": "_tokenize",
+        "line": 278
+      },
+      {
+        "name": "best_title_match",
+        "line": 282
+      }
+    ]
+  },
+  {
+    "path": "src/tools/verification_tool.py",
+    "lines": 311,
+    "sha256": "e37f96a32eccd4591698b6a14f3e32517a9ad08b0c726544c27a74b60b56efd4",
+    "symbols": [
+      {
+        "name": "VerificationResult",
+        "line": 42
+      },
+      {
+        "name": "VerificationEngine",
+        "line": 54
+      },
+      {
+        "name": "__init__",
+        "line": 49
+      },
+      {
+        "name": "__init__",
+        "line": 64
+      },
+      {
+        "name": "verify",
+        "line": 83
+      },
+      {
+        "name": "_corroborate",
+        "line": 107
+      },
+      {
+        "name": "_verify_existence",
+        "line": 118
+      },
+      {
+        "name": "_verify_metadata",
+        "line": 150
+      },
+      {
+        "name": "_verify_content",
+        "line": 188
+      },
+      {
+        "name": "_lookup",
+        "line": 198
+      },
+      {
+        "name": "_match_ratio",
+        "line": 229
+      },
+      {
+        "name": "_best_match_ratio",
+        "line": 233
+      },
+      {
+        "name": "_merge_metadata",
+        "line": 240
+      },
+      {
+        "name": "_pass_fail",
+        "line": 256
+      },
+      {
+        "name": "_check",
+        "line": 259
+      },
+      {
+        "name": "_recommend",
+        "line": 278
+      },
+      {
+        "name": "describe",
+        "line": 305
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/__init__.py",
+    "lines": 29,
+    "sha256": "dc24e27fe2d35ac67fee65dee7e742dd8fd6b9f4adaaa7e642b444ccdddedb1e",
+    "symbols": []
+  },
+  {
+    "path": "src/workflows/academic.py",
+    "lines": 84,
+    "sha256": "5ab148aba0a3dc73ac69a227558a6c641577c96912c3af85d7bb3aa2aa298bb2",
+    "symbols": [
+      {
+        "name": "AcademicWritingRequest",
+        "line": 19
+      },
+      {
+        "name": "AcademicWritingResponse",
+        "line": 28
+      },
+      {
+        "name": "AcademicWritingWorkflow",
+        "line": 34
+      },
+      {
+        "name": "_make_error_response",
+        "line": 37
+      },
+      {
+        "name": "_execute",
+        "line": 40
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/deep_research.py",
+    "lines": 72,
+    "sha256": "d196a57de07b7facdc300602113d3a4690de609745ffae15ac36e3338ed50f6b",
+    "symbols": [
+      {
+        "name": "DeepResearchRequest",
+        "line": 20
+      },
+      {
+        "name": "DeepResearchResponse",
+        "line": 29
+      },
+      {
+        "name": "DeepResearchWorkflow",
+        "line": 36
+      },
+      {
+        "name": "_make_error_response",
+        "line": 39
+      },
+      {
+        "name": "_execute",
+        "line": 42
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/evidence_flow.py",
+    "lines": 264,
+    "sha256": "29041d4d275cbb37394f93410964a548b2070db3cfd5707d5d6c713a7870c470",
+    "symbols": [
+      {
+        "name": "EvaluationResult",
+        "line": 51
+      },
+      {
+        "name": "classify_relationship",
+        "line": 73
+      },
+      {
+        "name": "compute_support_level",
+        "line": 78
+      },
+      {
+        "name": "calibrate_confidence",
+        "line": 109
+      },
+      {
+        "name": "evaluate_claim",
+        "line": 159
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/optimization.py",
+    "lines": 49,
+    "sha256": "2979922dbf66f77b0fce3b1fc3d7a4787d5fa073435dda4b1af55de02dae577a",
+    "symbols": [
+      {
+        "name": "OptimizationRequest",
+        "line": 14
+      },
+      {
+        "name": "OptimizationResponse",
+        "line": 19
+      },
+      {
+        "name": "OptimizationWorkflow",
+        "line": 24
+      },
+      {
+        "name": "_make_error_response",
+        "line": 27
+      },
+      {
+        "name": "_execute",
+        "line": 30
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/orchestrator.py",
+    "lines": 95,
+    "sha256": "528acf10022f40fc94d97312c6c50e657c6faf564bf4949bba22e613d3402e8c",
+    "symbols": [
+      {
+        "name": "OrchestratorRequest",
+        "line": 25
+      },
+      {
+        "name": "OrchestratorResponse",
+        "line": 33
+      },
+      {
+        "name": "OrchestratorAgent",
+        "line": 42
+      },
+      {
+        "name": "_make_error_response",
+        "line": 45
+      },
+      {
+        "name": "_execute",
+        "line": 48
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/validation.py",
+    "lines": 52,
+    "sha256": "2ebfc521c50c09d486cece8bc5c2795ce1743854fb388fa6ce6275197e580b87",
+    "symbols": [
+      {
+        "name": "EndToEndValidationRequest",
+        "line": 18
+      },
+      {
+        "name": "EndToEndValidationResponse",
+        "line": 23
+      },
+      {
+        "name": "EndToEndValidator",
+        "line": 29
+      },
+      {
+        "name": "_make_error_response",
+        "line": 32
+      },
+      {
+        "name": "_execute",
+        "line": 35
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/verification_flow.py",
+    "lines": 118,
+    "sha256": "0b211eac68aaa85078400ab162074e7988513fb201ae8c041b5938d57a6b5f67",
+    "symbols": [
+      {
+        "name": "is_legal_transition",
+        "line": 88
+      },
+      {
+        "name": "apply_verification_result",
+        "line": 99
+      }
+    ]
+  },
+  {
+    "path": "src/workflows/writing_flow.py",
+    "lines": 90,
+    "sha256": "f8327499f835fc55a27b091ca7b0ef630104be72b69895b3b9d4a26b5a974451",
+    "symbols": [
+      {
+        "name": "WritingStage",
+        "line": 31
+      },
+      {
+        "name": "is_legal_outline_transition",
+        "line": 57
+      },
+      {
+        "name": "is_legal_writing_transition",
+        "line": 64
+      },
+      {
+        "name": "apply_outline_result",
+        "line": 71
+      }
+    ]
+  }
+]

@@ -48,6 +48,20 @@ def _surname(author: str) -> str:
     return cleaned.split()[-1].strip()
 
 
+def _display_surname(author: str) -> str:
+    """Surname for human-facing output, preserving existing mixed case.
+    ``"LeCun"`` must stay ``"LeCun"`` (APA 7), so title-casing is applied only
+    when the surname carries no internal uppercase (e.g. ``"smith"`` →
+    ``"Smith"``). Found in CLI testing: in-text form showed ``Lecun``.
+    """
+    surname = _surname(author)
+    if not surname:
+        return ""
+    if any(char.isupper() for char in surname[1:]):
+        return surname
+    return surname.title()
+
+
 def _title_slug(title: str) -> str:
     """A stable, lowercase key fragment derived from the first significant word."""
     words = _UNSUPPORTED.split((title or "").lower())
@@ -83,12 +97,12 @@ def format_in_text_author_year(source: Source) -> str:
     if not source.authors:
         return f"{_title_slug(source.title).title()}, {year}"
     if len(source.authors) == 1:
-        return f"{_surname(source.authors[0]).title()}, {year}"
+        return f"{_display_surname(source.authors[0])}, {year}"
     if len(source.authors) == 2:
-        first = _surname(source.authors[0]).title()
-        second = _surname(source.authors[1]).title()
+        first = _display_surname(source.authors[0])
+        second = _display_surname(source.authors[1])
         return f"{first} & {second}, {year}"
-    first = _surname(source.authors[0]).title()
+    first = _display_surname(source.authors[0])
     return f"{first} et al., {year}"
 
 

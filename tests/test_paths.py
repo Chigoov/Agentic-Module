@@ -9,17 +9,21 @@ from src.core.paths import PathResolutionError, SystemPaths, get_paths
 
 
 def test_get_paths_discovers_system_root(real_system_root: Path) -> None:
-    """Verify that get_paths() discovers DATA BASE from the filesystem."""
+    """get_paths() discovers this checkout wherever it lives (audit A07: the
+    folder name is not the identity — the canonical spec files are)."""
+    from src.core.paths import SPEC_FILES
+
     paths = get_paths()
     assert paths.system_root == real_system_root
-    assert paths.system_root.name == "DATA BASE"
+    assert all((paths.system_root / name).is_file() for name in SPEC_FILES[:3])
 
 
 def test_get_paths_derives_workspace_root(real_system_root: Path) -> None:
-    """Workspace root is one level above system root."""
+    """Workspace root is one level above system root, whatever the checkout
+    folder is named (audit A07 portability)."""
     paths = get_paths()
     assert paths.workspace_root == real_system_root.parent
-    assert paths.system_root == paths.workspace_root / "DATA BASE"
+    assert paths.system_root.parent == paths.workspace_root
 
 
 def test_system_paths_properties_exist() -> None:
@@ -45,28 +49,46 @@ def test_spec_files_present(real_system_root: Path) -> None:
     assert missing == [], f"Missing specification files: {missing}"
 
 
-def test_project_workspaces_discovered() -> None:
-    """TUGAS 1 and TUGAS 2 should be discovered as project workspaces."""
-    paths = get_paths()
-    workspaces = paths.project_workspaces()
-    workspace_names = {ws.name for ws in workspaces}
-    assert "TUGAS 1" in workspace_names
-    assert "TUGAS 2" in workspace_names
+def test_project_workspaces_discovered(real_system_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Workspaces are discovered from the workspace root, independent of any
+    pre-existing local folders (audit: clean clones must pass without a local
+    ``TUGAS 1``). The check runs against an isolated synthetic workspace."""
+    from src.core.paths import reset_paths_cache
+    monkeypatch.setenv("AUTONOMI_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTONOMI_SYSTEM_ROOT", str(real_system_root))
+    reset_paths_cache()
+    try:
+        (tmp_path / "TUGAS 1").mkdir()
+        (tmp_path / "TUGAS 2").mkdir()
+        paths = get_paths()
+        workspace_names = {ws.name for ws in paths.project_workspaces()}
+        assert "TUGAS 1" in workspace_names
+        assert "TUGAS 2" in workspace_names
+    finally:
+        reset_paths_cache()
 
 
-def test_workspace_path_resolves_correctly() -> None:
-    """workspace_path() should resolve TUGAS 1 to workspace_root/TUGAS 1."""
-    paths = get_paths()
-    tugas1 = paths.workspace_path("TUGAS 1")
-    assert tugas1 == paths.workspace_root / "TUGAS 1"
-    assert tugas1.is_dir()
+def test_workspace_path_resolves_correctly(real_system_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """workspace_path() resolves a workspace to workspace_root/<name> without
+    requiring it to exist physically beforehand (audit: clean-clone portability)."""
+    from src.core.paths import reset_paths_cache
+    monkeypatch.setenv("AUTONOMI_WORKSPACE_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTONOMI_SYSTEM_ROOT", str(real_system_root))
+    reset_paths_cache()
+    try:
+        paths = get_paths()
+        tugas1 = paths.workspace_path("TUGAS 1")
+        assert tugas1 == tmp_path / "TUGAS 1"
+    finally:
+        reset_paths_cache()
 
 
 def test_workspace_path_rejects_system_root() -> None:
-    """workspace_path() must refuse to return SYSTEM_ROOT (DATA BASE)."""
+    """workspace_path() must refuse the SYSTEM_ROOT folder itself, whatever
+    the checkout is named (audit A07 portability)."""
     paths = get_paths()
     with pytest.raises(PathResolutionError, match="SYSTEM_ROOT is not a project workspace"):
-        paths.workspace_path("DATA BASE")
+        paths.workspace_path(paths.system_root.name)
 
 
 def test_workspace_path_rejects_escape() -> None:

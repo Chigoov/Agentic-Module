@@ -181,16 +181,22 @@ def read_jsonl(path: str | os.PathLike[str]) -> list[dict[str, Any]]:
 
 
 def backup_file(path: str | os.PathLike[str], *, root: str | os.PathLike[str]) -> Path | None:
-    """Copy an existing file next to itself with a UTC timestamp suffix.
+    """Copy an existing file next to itself with a unique UTC timestamp suffix.
 
     Used before any operation that would otherwise overwrite user-visible work
     (00_MASTER_INSTRUCTION.md §3.5). Returns ``None`` when there is nothing to
-    back up.
+    back up. The suffix includes microseconds so two backups within the same
+    second never collide (audit A05); if the name still exists, a counter is
+    appended until it is unique.
     """
     source = ensure_within(path, root)
     if not source.is_file():
         return None
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     destination = source.with_name(f"{source.name}.{stamp}.bak")
+    counter = 0
+    while destination.exists():
+        counter += 1
+        destination = source.with_name(f"{source.name}.{stamp}.{counter}.bak")
     destination.write_bytes(source.read_bytes())
     return destination

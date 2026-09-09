@@ -214,6 +214,25 @@ class ProjectManager:
 
         try:
             data = read_json(manifest_file)
+        except Exception as exc:
+            raise ProjectError(
+                f"Failed to load project manifest: {manifest_file}",
+                workspace=workspace,
+                name=name,
+                error=str(exc),
+            ) from exc
+        # Rebase onto the manifest's actual location (audit A07): the manifest
+        # may have been copied/moved from another laptop or drive, so its
+        # stored absolute path can be stale. Output must always follow the
+        # manifest's current location, never the machine of origin.
+        actual_dir = project_dir.resolve()
+        if str(data.get("path", "")) != str(actual_dir):
+            _logger.info(
+                "Rebasing project path from manifest to actual location",
+                extra={"manifest_path": str(data.get("path")), "actual": str(actual_dir)},
+            )
+            data["path"] = str(actual_dir)
+        try:
             project = Project.from_dict(data)
         except Exception as exc:
             raise ProjectError(
@@ -222,6 +241,9 @@ class ProjectManager:
                 name=name,
                 error=str(exc),
             ) from exc
+        if project.directory != actual_dir:
+            # Defense in depth: never return a project pointing elsewhere.
+            project = project.model_copy(update={"path": str(actual_dir)})
 
         _logger.debug(
             "Project loaded",

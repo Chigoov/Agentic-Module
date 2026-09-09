@@ -70,24 +70,45 @@ def _as_dir(value: str | os.PathLike[str]) -> Path:
 
 
 def _looks_like_system_root(candidate: Path) -> bool:
-    """A system root is a directory named ``DATA BASE`` holding the spec files.
-
-    Only one spec file is required for the check so that a partially populated
-    test workspace still resolves.
+    """A system root is any checkout directory holding the spec files.
+    Historically the root had to be *named* ``DATA BASE`` (audit A07), which
+    broke fresh clones into differently named folders. The marker check now
+    accepts any directory containing the canonical spec set — the files are
+    the identity, not the folder name. A directory named ``DATA BASE`` without
+    the spec files still resolves (legacy behavior for workspaces where the
+    checkout lives inside the system root).
     """
-    if candidate.name != SYSTEM_ROOT_DIRNAME or not candidate.is_dir():
+    if not candidate.is_dir():
+        return False
+    if candidate.name != SYSTEM_ROOT_DIRNAME:
         return False
     return True
 
 
+def _has_spec_markers(candidate: Path) -> bool:
+    """Whether ``candidate`` holds the canonical spec set — a portable root marker."""
+    if not candidate.is_dir():
+        return False
+    return all((candidate / name).is_file() for name in SPEC_FILES[:3])
+
+
 def _discover_system_root(start: Path) -> Path:
-    """Walk upwards from ``start`` looking for the system root."""
+    """Walk upwards from ``start`` looking for the system root.
+    Two passes keep both layouts working (audit A07): first the classic
+    ``DATA BASE`` folder name, then — for fresh clones in an arbitrarily named
+    folder — the canonical spec files as the root marker. The folder-name pass
+    runs first so a workspace containing a nested ``DATA BASE`` keeps resolving
+    to that nested root.
+    """
+    # Pass 1: legacy folder-name marker (nested DATA BASE wins immediately).
     for candidate in (start, *start.parents):
-        if _looks_like_system_root(candidate):
-            return candidate
         nested = candidate / SYSTEM_ROOT_DIRNAME
         if _looks_like_system_root(nested):
             return nested
+    # Pass 2: any checkout holding the canonical spec files.
+    for candidate in (start, *start.parents):
+        if _has_spec_markers(candidate):
+            return candidate
     raise PathResolutionError(
         f"Could not locate the {SYSTEM_ROOT_DIRNAME!r} system root starting from {start}. "
         f"Set {ENV_SYSTEM_ROOT} to the absolute path of the system root."
@@ -99,20 +120,31 @@ def _resolve_roots(system_root: str | os.PathLike[str] | None = None) -> tuple[P
 
     Resolution order: explicit argument, ``AUTONOMI_SYSTEM_ROOT``,
     ``AUTONOMI_WORKSPACE_ROOT``, then discovery from this file's location.
+    When both env vars are set they are honored *independently* (audit A07):
+    a laptop may keep the checkout in one place and its workspaces elsewhere.
+    When only WORKSPACE_ROOT is set, the system root is its ``DATA BASE`` child
+    (classic layout). When only SYSTEM_ROOT is set, the workspace root is the
+    system root's parent (classic layout).
     """
-    if system_root is not None:
-        resolved = _as_dir(system_root)
-    elif os.environ.get(ENV_SYSTEM_ROOT):
-        resolved = _as_dir(os.environ[ENV_SYSTEM_ROOT])
-    elif os.environ.get(ENV_WORKSPACE_ROOT):
-        resolved = _as_dir(os.environ[ENV_WORKSPACE_ROOT]) / SYSTEM_ROOT_DIRNAME
+    explicit_system = os.environ.get(ENV_SYSTEM_ROOT) if system_root is None else system_root
+    explicit_workspace = os.environ.get(ENV_WORKSPACE_ROOT)
+    if explicit_system is not None:
+        resolved_system = _as_dir(explicit_system)
+        if explicit_workspace is not None:
+            resolved_workspace = _as_dir(explicit_workspace)
+        else:
+            resolved_workspace = resolved_system.parent
+    elif explicit_workspace is not None:
+        resolved_workspace = _as_dir(explicit_workspace)
+        resolved_system = resolved_workspace / SYSTEM_ROOT_DIRNAME
     else:
-        resolved = _discover_system_root(Path(__file__).resolve().parent)
+        resolved_system = _discover_system_root(Path(__file__).resolve().parent)
+        resolved_workspace = resolved_system.parent
 
-    if not resolved.is_dir():
-        raise PathResolutionError(f"System root does not exist or is not a directory: {resolved}")
+    if not resolved_system.is_dir():
+        raise PathResolutionError(f"System root does not exist or is not a directory: {resolved_system}")
 
-    return resolved.parent, resolved
+    return resolved_workspace, resolved_system
 
 
 @dataclass(frozen=True, slots=True)

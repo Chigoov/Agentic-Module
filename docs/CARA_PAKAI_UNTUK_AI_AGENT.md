@@ -8,7 +8,7 @@ bisa menjalankan perintah Python.
 Semua agent harus masuk lewat folder:
 
 ```powershell
-cd "C:\Users\HYPE AMD\Downloads\VIBE CODING\AUTONOMI AGENTIC ILMIAH\DATA BASE"
+cd "C:\jalan\ke\folder\checkout\anda"
 ```
 
 ## Perintah Standar

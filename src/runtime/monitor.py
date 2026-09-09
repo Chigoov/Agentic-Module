@@ -1,14 +1,21 @@
-"""Localhost API and animated workflow monitor."""
-
+"""Localhost API and animated workflow monitor.
+Security model (audit A06/A15): loopback-only networking is necessary but not
+sufficient. The write endpoint additionally requires a local API token, an
+Origin/Host allowlist, and a server-controlled project root; malformed input
+fails with structured JSON instead of dropping the connection.
+"""
 from __future__ import annotations
 
 import json
+import os
+import secrets
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, TaskAnalyzerAgent, TaskAnalyzerRequest
+from src.core.paths import get_paths
 from src.runtime.bootstrap import health_check
 from src.runtime.progress import read_progress, record_progress
 from src.schemas.claim import Claim
@@ -17,8 +24,42 @@ from src.schemas.outline import Outline
 from src.schemas.project import Project
 from src.schemas.source import Source
 from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
+from src.workflows.gates import AcademicGateError
 
-__all__ = ["create_handler", "serve"]
+__all__ = ["create_handler", "serve", "get_api_token"]
+
+#: Maximum accepted request body (audit A15): oversized payloads are rejected
+#: with 413 instead of being read without bound.
+_MAX_BODY_BYTES = 10 * 1024 * 1024
+#: Environments where Origin may legitimately be absent (curl, CLI tools).
+_TRUSTED_ORIGIN_SUFFIXES: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]")
+
+
+def get_api_token() -> str:
+    """Return the local API token, creating it on first use.
+    The token is generated per system installation and persisted under
+    ``state/monitor_token.txt`` (not committed to Git) so every laptop keeps
+    its own value. ``AUTONOMI_API_TOKEN`` overrides it for tests. Local
+    callers read the file (or the printed startup JSON) to authenticate
+    write endpoints; remote pages cannot know the token.
+    """
+    override = os.environ.get("AUTONOMI_API_TOKEN")
+    if override:
+        return override
+    try:
+        state_dir = get_paths().state_dir
+        state_dir.mkdir(parents=True, exist_ok=True)
+        token_file = state_dir / "monitor_token.txt"
+    except Exception:  # noqa: BLE001 - path resolution must not crash serving
+        token_file = None  # type: ignore[assignment]
+    if token_file is not None and token_file.is_file():
+        token = token_file.read_text(encoding="utf-8").strip()
+        if token:
+            return token
+    token = secrets.token_urlsafe(32)
+    if token_file is not None:
+        token_file.write_text(token, encoding="utf-8")
+    return token
 
 
 INDEX = """<!doctype html>
@@ -118,15 +159,32 @@ def _json(payload: Any) -> str:
 
 
 def _project_from_payload(payload: dict[str, Any]) -> Project:
+    """Build a Project whose directory the *server* controls (audit A06).
+    ``project_path`` from the request body is deliberately ignored: an
+    untrusted caller must not choose where files are written. Projects are
+    created under the server's own workspace root.
+    """
     if "project" in payload:
-        return Project.model_validate(payload["project"])
-    project_path = Path(payload["project_path"]).expanduser().resolve()
-    project_path.mkdir(parents=True, exist_ok=True)
+        project = Project.model_validate(payload["project"])
+        if not get_paths().is_inside_workspace(project.directory):
+            raise ValueError(
+                "project path is outside the server workspace root"
+            )
+        return project
+    workspace_root = get_paths().workspace_root
+    workspace_name = payload.get("workspace", "TUGAS 1")
+    project_name = payload.get("project_name") or payload.get("topic") or "research"
+    # Slugify to a safe folder name; the server picks the directory.
+    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in project_name).strip() or "research"
+    project_dir = (workspace_root / workspace_name / safe_name).resolve()
+    if not get_paths().is_inside_workspace(project_dir):
+        raise ValueError("workspace escapes the server workspace root")
+    project_dir.mkdir(parents=True, exist_ok=True)
     return Project(
-        name=payload.get("project_name") or project_path.name,
-        workspace=payload.get("workspace", "TUGAS 1"),
-        path=str(project_path),
-        title=payload.get("title") or project_path.name,
+        name=safe_name,
+        workspace=workspace_name,
+        path=str(project_dir),
+        title=payload.get("title") or safe_name,
         citation_style=payload.get("citation_style", "APA7"),
         language=payload.get("language", "id"),
         user_request=payload.get("topic", ""),
@@ -148,8 +206,12 @@ class MonitorHandler(BaseHTTPRequestHandler):
         raw = body.encode("utf-8") if isinstance(body, str) else body
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # CORS narrowed to loopback origins only (audit A06): same-origin
+        # pages need no CORS header, foreign pages get none.
+        origin = self.headers.get("Origin", "")
+        if any(origin.rstrip("/").endswith(suffix) for suffix in _TRUSTED_ORIGIN_SUFFIXES):
+            self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Autonomi-Token")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
@@ -158,6 +220,16 @@ class MonitorHandler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: Any) -> None:
         self._send(status, json.dumps(payload, ensure_ascii=False, default=str), "application/json; charset=utf-8")
 
+    def _origin_allowed(self) -> bool:
+        """Reject cross-origin browser writes carrying a foreign Origin."""
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return True
+        return any(origin.rstrip("/").endswith(suffix) for suffix in _TRUSTED_ORIGIN_SUFFIXES)
+    def _token_ok(self) -> bool:
+        """Write endpoints require the local API token (audit A06)."""
+        provided = self.headers.get("X-Autonomi-Token", "")
+        return bool(provided) and secrets.compare_digest(provided, get_api_token())
     def do_OPTIONS(self) -> None:  # noqa: N802
         self._send(204, b"", "text/plain; charset=utf-8")
 
@@ -187,17 +259,48 @@ class MonitorHandler(BaseHTTPRequestHandler):
         if urlparse(self.path).path != "/api/run-academic":
             self._json(404, {"success": False, "error": "not found"})
             return
-        length = int(self.headers.get("Content-Length", "0"))
-        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        # Guards first (audit A06): Origin allowlist, then the local token.
+        if not self._origin_allowed():
+            self._json(403, {"success": False, "error": "cross-origin requests are not allowed"})
+            return
+        if not self._token_ok():
+            self._json(401, {"success": False, "error": "missing or invalid X-Autonomi-Token header"})
+            return
+        try:
+            length_header = self.headers.get("Content-Length", "0")
+            if not length_header.isdigit():
+                self._json(400, {"success": False, "error_code": "INVALID_CONTENT_LENGTH", "error": "bad Content-Length"})
+                return
+            length = int(length_header)
+            if length > _MAX_BODY_BYTES:
+                self._json(413, {"success": False, "error_code": "PAYLOAD_TOO_LARGE", "error": "request body exceeds the allowed size"})
+                return
+            raw = self.rfile.read(length) if length else b""
+        except Exception as exc:  # noqa: BLE001 - structured failure, never a dropped connection
+            self._json(400, {"success": False, "error_code": "BODY_READ_FAILED", "error": str(exc)})
+            return
+        # Parse errors answer with structured JSON instead of closing the
+        # connection (audit A15).
+        try:
+            payload = json.loads(raw.decode("utf-8") or "{}")
+            if not isinstance(payload, dict):
+                raise ValueError("request body must be a JSON object")
+            project = _project_from_payload(payload)
+            claims = [Claim.model_validate(x) for x in payload.get("claims", [])]
+            evidence = [Evidence.model_validate(x) for x in payload.get("evidence", [])]
+            sources = [Source.model_validate(x) for x in payload.get("sources", [])]
+            outline = Outline.model_validate(payload["outline"]) if payload.get("outline") else None
+        except Exception as exc:  # noqa: BLE001 - structured failure, never a dropped connection
+            self._json(400, {"success": False, "error_code": "INVALID_REQUEST", "error": str(exc)})
+            return
         record_progress("academic", "running", message="Academic workflow started")
-        project = _project_from_payload(payload)
         response = AcademicWritingWorkflow().execute(
             AcademicWritingRequest(
                 project=project,
-                claims=[Claim.model_validate(x) for x in payload.get("claims", [])],
-                evidence=[Evidence.model_validate(x) for x in payload.get("evidence", [])],
-                sources=[Source.model_validate(x) for x in payload.get("sources", [])],
-                outline=Outline.model_validate(payload["outline"]) if payload.get("outline") else None,
+                claims=claims,
+                evidence=evidence,
+                sources=sources,
+                outline=outline,
             )
         )
         record_progress("academic", "success" if response.success else "failed", message=response.error_message or "Academic workflow completed")

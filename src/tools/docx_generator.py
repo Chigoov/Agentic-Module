@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from docx import Document
@@ -47,15 +49,41 @@ class DocxGenerationTool(BaseTool[DocxGenerationRequest, DocxGenerationResponse]
             for entry in request.reference_list.entries:
                 doc.add_paragraph(entry.formatted)
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        doc.save(path)
+        # Atomic save (audit A05): write to a sibling temp file first, then
+        # replace, so a crash mid-save cannot corrupt the previous final.docx.
+        # mkstemp opens an fd that must be closed *before* doc.save reuses the
+        # name on Windows, and the saved package must be closed before replace.
+        fd, temp_name = tempfile.mkstemp(
+            dir=str(Path(path).parent), prefix=f".{Path(path).name}.", suffix=".tmp"
+        )
+        os.close(fd)
+        temp_path = Path(temp_name)
+        try:
+            doc.save(str(temp_path))
+            os.replace(temp_path, Path(path))
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
         return DocxGenerationResponse(docx_path=str(path), backup_path=str(backup) if backup else None)
 
     @staticmethod
     def _add_markdown(doc: Document, text: str) -> None:
+        # The draft carries its own "## References" section (single ID→label
+        # mapping for the Markdown package). When a structured reference list
+        # is supplied, the DOCX appends its own References heading, so the
+        # draft's copy is skipped here to avoid a duplicated bibliography.
+        in_draft_references = False
         for raw in text.splitlines():
             line = raw.strip()
             if not line:
                 continue
+            if line.startswith("## References"):
+                in_draft_references = True
+                continue
+            if in_draft_references:
+                if line.startswith("- "):
+                    continue  # draft bibliography bullet; DOCX adds its own
+                in_draft_references = False
             if line.startswith("# "):
                 doc.add_heading(line[2:].strip(), level=0)
             elif line.startswith("## "):

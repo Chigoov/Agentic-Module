@@ -1,0 +1,7 @@
+{
+  "report_sections": 15,
+  "source_files_unchanged": 72,
+  "monitor_http": 200,
+  "tracked_diff": "",
+  "note": "Audit report only; no production remediation performed."
+}

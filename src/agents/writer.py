@@ -23,7 +23,7 @@ from collections import defaultdict
 from pydantic import Field
 
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
-from src.core.storage import atomic_write_text
+from src.core.storage import atomic_write_text, backup_file
 from src.schemas.citation import CitationStyle, ReferenceList
 from src.schemas.claim import Claim
 from src.schemas.evidence import Evidence
@@ -108,44 +108,33 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
         lines: list[str] = [f"# {request.outline.title}", ""]
 
         for section in request.outline.sections:
-            lines.append(f"{'#' * (section.level + 1)} {section.title}")
-            lines.append("")
-            for claim_id in section.claim_ids:
-                claim = claim_by_id.get(claim_id)
-                if claim is None:
-                    continue
-
-                statement = claim.claim_text
-                if claim.qualifier:
-                    statement = f"{statement} ({claim.qualifier})"
-
-                citations = self._citations_for(claim, evidence_by_claim, source_by_id)
-                lines.append(f"{statement}{citations}")
-                lines.append("")
-
-                for evidence in evidence_by_claim.get(claim.id, []):
-                    if not evidence.is_citable_quotation:
-                        continue
-                    source = source_by_id.get(evidence.source_id)
-                    if source is None:
-                        continue
-                    locator = evidence.location.describe()
-                    lines.append(
-                        f'> "{evidence.evidence_text}" '
-                        f"({format_in_text_author_year(source)}, {locator})"
-                    )
-                    lines.append("")
-
-        draft = "\n".join(lines)
+            self._render_section(section, lines, claim_by_id, evidence_by_claim, source_by_id)
 
         style = self._resolve_style(request.project.citation_style)
         reference_list = format_reference_list(
             manager.cited_sources(), style=style, project_id=request.project.id
         )
+        # Single ID-to-label mapping (audit A10/A02): the bibliography is
+        # rendered into the draft itself, so a --no-docx run still ships a
+        # complete citation + reference package and the audit can check
+        # body-vs-bibliography consistency on one text.
+        if reference_list.entries:
+            lines.append("## References")
+            lines.append("")
+            for entry in reference_list.entries:
+                formatted = entry.formatted
+                if entry.missing_fields:
+                    formatted += " [sumber belum lengkap]"
+                lines.append(f"- {formatted}")
+            lines.append("")
+        draft = "\n".join(lines)
 
         orphan_citations = manager.detect_orphan_citations(draft)
 
         draft_path = request.project.artifact_path(ProjectArtifact.DRAFT)
+        # Preserve manual edits (audit A05): back up an existing draft before
+        # the rerun overwrites it, so a user's sentinel edits survive.
+        backup_file(draft_path, root=request.project.directory)
         atomic_write_text(
             draft_path,
             draft + "\n",
@@ -169,6 +158,44 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
         }
         return response
 
+    @staticmethod
+    def _render_section(
+        section,
+        lines: list[str],
+        claim_by_id: dict[str, Claim],
+        evidence_by_claim: dict[str, list[Evidence]],
+        source_by_id: dict[str, Source],
+    ) -> None:
+        """Render one outline section and all of its subsections (audit A17).
+        Previously only top-level sections were rendered, so claims referenced
+        from nested subsections silently vanished from the draft.
+        """
+        lines.append(f"{'#' * (section.level + 1)} {section.title}")
+        lines.append("")
+        for claim_id in section.claim_ids:
+            claim = claim_by_id.get(claim_id)
+            if claim is None:
+                continue
+            statement = claim.claim_text
+            if claim.qualifier:
+                statement = f"{statement} ({claim.qualifier})"
+            citations = WriterAgent._citations_for(claim, evidence_by_claim, source_by_id)
+            lines.append(f"{statement}{citations}")
+            lines.append("")
+            for evidence in evidence_by_claim.get(claim.id, []):
+                if not evidence.is_citable_quotation:
+                    continue
+                source = source_by_id.get(evidence.source_id)
+                if source is None:
+                    continue
+                locator = evidence.location.describe()
+                lines.append(
+                    f'> "{evidence.evidence_text}" '
+                    f"({format_in_text_author_year(source)}, {locator})"
+                )
+                lines.append("")
+        for subsection in section.subsections:
+            WriterAgent._render_section(subsection, lines, claim_by_id, evidence_by_claim, source_by_id)
     @staticmethod
     def _citations_for(
         claim: Claim,

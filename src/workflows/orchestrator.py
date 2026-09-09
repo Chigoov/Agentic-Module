@@ -19,6 +19,8 @@ from src.schemas.outline import Outline
 from src.schemas.project import Project
 from src.schemas.source import Source
 
+from src.workflows.gates import AcademicGateError, check_academic_integrity, scan_output_text
+
 __all__ = ["OrchestratorRequest", "OrchestratorResponse", "OrchestratorAgent"]
 
 
@@ -47,6 +49,28 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
 
     def _execute(self, request: OrchestratorRequest) -> OrchestratorResponse:
         stages: list[str] = []
+        # Academic integrity gate (audit A01/A04): input status flags are not
+        # evidence. Reject unresolvable IDs, unverified sources, and undisclosed
+        # conflicts before any stage runs.
+        gate = check_academic_integrity(
+            claims=request.claims, evidence=request.evidence, sources=request.sources
+        )
+        if not gate.ok:
+            raise AcademicGateError(
+                "Academic integrity gate rejected the payload",
+                context="pre-writing integrity check",
+                why_it_matters=(
+                    "Unverifiable claims/evidence/sources must not reach an "
+                    "academic output; status flags alone are not proof"
+                ),
+                options=[
+                    "Fix the IDs and re-run with resolvable references",
+                    "Verify the cited sources before citing them",
+                    "Disclose conflicts via a qualifier or contradicting evidence",
+                ],
+                recommended_action="Fix the payload, then run again",
+                violations=gate.violations,
+            )
         synthesis_response = SynthesisAgent().execute(
             SynthesisRequest(project=request.project, claims=request.claims, evidence=request.evidence)
         )
@@ -77,6 +101,18 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
             return OrchestratorResponse(success=False, error_message=writer_response.error_message, stages=stages)
         stages.append("writing")
 
+        # Output scan (audit A02): internal citation tokens and author-year
+        # citations with no matching source must never reach export.
+        output_violations = scan_output_text(draft=writer_response.draft, sources=request.sources)
+        if output_violations:
+            return OrchestratorResponse(
+                success=False,
+                error_message="Output scan failed: " + "; ".join(output_violations),
+                stages=stages,
+                draft=writer_response.draft,
+                draft_path=writer_response.draft_path,
+                reference_list=writer_response.reference_list,
+            )
         citation = CitationAuditAgent().execute(
             CitationAuditRequest(project=request.project, draft=writer_response.draft, sources=request.sources)
         )

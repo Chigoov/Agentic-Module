@@ -1,0 +1,614 @@
+Tool call refused
+C:\Users\HYPE AMD\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='levels', input_value='PASSED', input_type=str])
+  PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='levels', input_value='UNVERIFIED', input_type=str])
+  PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='levels', input_value='UNVERIFIED', input_type=str])
+  return self.__pydantic_serializer__.to_python(
+C:\Users\HYPE AMD\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+  PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='levels', input_value='PASSED', input_type=str])
+  PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='levels', input_value='PASSED', input_type=str])
+  PydanticSerializationUnexpectedValue(Expected `enum` - serialized value may not be as expected [field_name='levels', input_value='UNVERIFIED', input_type=str])
+  return self.__pydantic_serializer__.to_python(
+{
+  "fixture_warning": "NOT ACADEMIC OUTPUT. Adversarial fixtures only.",
+  "temporary_directory": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa",
+  "plan_simple": {
+    "exit_code": 0,
+    "stdout": "{\n  \"success\": true,\n  \"task\": {\n    \"id\": \"task_20260907T005137_4140c67c\",\n    \"schema_version\": \"1.0\",\n    \"created_at\": \"2026-09-07T00:51:37.142440+00:00\",\n    \"updated_at\": \"2026-09-07T00:51:37.142447+00:00\",\n    \"provenance\": null,\n    \"history\": [],\n    \"errors\": [],\n    \"user_request\": \"manfaat membaca untuk mahasiswa\",\n    \"mode\": \"ACADEMIC_WRITING\",\n    \"state\": \"CREATED\",\n    \"workspace\": \"TUGAS 1\",\n    \"project_dir\": \"\",\n    \"research_plan\": {},\n    \"config\": {}\n  },\n  \"keywords\": [\n    \"manfaat\",\n    \"membaca\",\n    \"untuk\",\n    \"mahasiswa\"\n  ],\n  \"plan\": {\n    \"mode\": \"ACADEMIC_WRITING\",\n    \"queries\": [\n      \"manfaat membaca untuk mahasiswa\"\n    ],\n    \"min_sources_per_important_claim\": 2,\n    \"citation_style\": \"APA7\",\n    \"language\": \"id\"\n  }\n}\n",
+    "stderr": ""
+  },
+  "plan_edjust": {
+    "exit_code": 0,
+    "stdout": "{\n  \"success\": true,\n  \"task\": {\n    \"id\": \"task_20260907T005137_3c76e9f1\",\n    \"schema_version\": \"1.0\",\n    \"created_at\": \"2026-09-07T00:51:37.848360+00:00\",\n    \"updated_at\": \"2026-09-07T00:51:37.848367+00:00\",\n    \"provenance\": null,\n    \"history\": [],\n    \"errors\": [],\n    \"user_request\": \"PKM-RSH Edjust program pendidikan hak anak remaja 12-18 tahun terdampak perceraian orang tua\",\n    \"mode\": \"ACADEMIC_WRITING\",\n    \"state\": \"CREATED\",\n    \"workspace\": \"TUGAS 1\",\n    \"project_dir\": \"\",\n    \"research_plan\": {},\n    \"config\": {}\n  },\n  \"keywords\": [\n    \"pkm-rsh\",\n    \"edjust\",\n    \"program\",\n    \"pendidikan\",\n    \"anak\",\n    \"remaja\",\n    \"12-18\",\n    \"tahun\"\n  ],\n  \"plan\": {\n    \"mode\": \"ACADEMIC_WRITING\",\n    \"queries\": [\n      \"pkm-rsh edjust program pendidikan anak remaja 12-18 tahun\"\n    ],\n    \"min_sources_per_important_claim\": 2,\n    \"citation_style\": \"APA7\",\n    \"language\": \"id\"\n  }\n}\n",
+    "stderr": ""
+  },
+  "empty_academic": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\empty\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\empty\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE"
+  },
+  "nonexistent_evidence": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\nonexistent\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\nonexistent\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nAUDIT FIXTURE: unsupported statement\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nAUDIT FIXTURE: unsupported statement"
+  },
+  "internal_tokens": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\internal\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\internal\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nAUDIT FIXTURE turn0search0 view0 search0 filecite\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nAUDIT FIXTURE turn0search0 view0 search0 filecite"
+  },
+  "invalid_doi_rejected_source": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\invalid\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\invalid\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\nReferences\n[missing: author] (n.d.). AUDIT FIXTURE - NOT A REAL SOURCE. [missing: venue]. https://doi.org/NOT_A_DOI_AUDIT"
+  },
+  "missing_metadata": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\missing\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\missing\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\nReferences\n[missing: author] (n.d.). AUDIT FIXTURE - NOT A REAL SOURCE. [missing: venue]. [missing: doi/url]"
+  },
+  "conflict": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\conflict\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\conflict\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\nReferences\n[missing: author] (n.d.). AUDIT FIXTURE - NOT A REAL SOURCE. [missing: venue]. https://doi.org/NOT_A_DOI_AUDIT"
+  },
+  "asserted_quote_and_page": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\quote\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\quote\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\n\n> \"AUDIT FIXTURE unverified quotation\" (Audit, n.d., p. 999)\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nAUDIT FIXTURE: unsupported statement (Audit, n.d.)\n\"AUDIT FIXTURE unverified quotation\" (Audit, n.d., p. 999)\nReferences\n[missing: author] (n.d.). AUDIT FIXTURE - NOT A REAL SOURCE. [missing: venue]. https://doi.org/NOT_A_DOI_AUDIT"
+  },
+  "apa_orphan_audit": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "passed": true,
+    "orphan_citations": [],
+    "audit_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\orphan\\citation_audit.json"
+  },
+  "overwrite": {
+    "old_draft_preserved": false,
+    "backups": []
+  },
+  "empty_validation": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "passed": [],
+    "failed": [],
+    "report_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\validation\\e2e_validation.json"
+  },
+  "public_crossref": {
+    "success": false,
+    "error_code": "NOT_IMPLEMENTED",
+    "error_message": "crossref is declared but not implemented yet",
+    "status": "NOT_IMPLEMENTED",
+    "metadata": {},
+    "results": [],
+    "result_count": 0,
+    "raw_count": 0,
+    "requested_max": 0,
+    "returned_count": 0,
+    "local_truncation": false,
+    "query_used": "",
+    "request_url": "",
+    "raw_response_text": ""
+  },
+  "default_verification_agent": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "sources": [
+      {
+        "id": "src_20260907T005138_e429f1e1",
+        "schema_version": "1.0",
+        "created_at": "2026-09-07T00:51:38.455688+00:00",
+        "updated_at": "2026-09-07T00:51:38.463466+00:00",
+        "provenance": null,
+        "history": [
+          {
+            "from_state": "DISCOVERED",
+            "to_state": "NEEDS_HUMAN_REVIEW",
+            "reason": "verification agent result",
+            "at": "2026-09-07T00:51:38.463462+00:00",
+            "actor": "verification_agent"
+          }
+        ],
+        "errors": [],
+        "title": "Deep learning",
+        "authors": [
+          "LeCun, Y."
+        ],
+        "year": 2015,
+        "venue": null,
+        "doi": "10.1038/nature14539",
+        "url": null,
+        "abstract": null,
+        "source_type": "OTHER",
+        "state": "NEEDS_HUMAN_REVIEW",
+        "verification_notes": [],
+        "citation_count": null,
+        "retrieval_path": null,
+        "metadata": {}
+      }
+    ],
+    "reports": [
+      {
+        "id": "vrep_20260907T005138_99c023c5",
+        "schema_version": "1.0",
+        "created_at": "2026-09-07T00:51:38.463178+00:00",
+        "updated_at": "2026-09-07T00:51:38.463421+00:00",
+        "provenance": {
+          "origin": "verification_engine",
+          "tool": null,
+          "query": null,
+          "retrieved_at": "2026-09-07T00:51:38.463168+00:00",
+          "raw_reference": null,
+          "notes": null
+        },
+        "history": [],
+        "errors": [],
+        "source_id": "src_20260907T005138_e429f1e1",
+        "checks": [
+          {
+            "id": "vchk_20260907T005138_400ce5d7",
+            "schema_version": "1.0",
+            "created_at": "2026-09-07T00:51:38.463232+00:00",
+            "updated_at": "2026-09-07T00:51:38.463233+00:00",
+            "provenance": null,
+            "history": [],
+            "errors": [],
+            "name": "title_nonempty",
+            "level": "EXISTENCE",
+            "status": "PASSED",
+            "detail": "Title present",
+            "provider": null,
+            "confidence": 1.0
+          },
+          {
+            "id": "vchk_20260907T005138_d54dd38c",
+            "schema_version": "1.0",
+            "created_at": "2026-09-07T00:51:38.463324+00:00",
+            "updated_at": "2026-09-07T00:51:38.463325+00:00",
+            "provenance": null,
+            "history": [],
+            "errors": [],
+            "name": "doi_format",
+            "level": "EXISTENCE",
+            "status": "PASSED",
+            "detail": "DOI normalized to 10.1038/nature14539",
+            "provider": null,
+            "confidence": 1.0
+          },
+          {
+            "id": "vchk_20260907T005138_3f5a9c8d",
+            "schema_version": "1.0",
+            "created_at": "2026-09-07T00:51:38.463358+00:00",
+            "updated_at": "2026-09-07T00:51:38.463359+00:00",
+            "provenance": null,
+            "history": [],
+            "errors": [],
+            "name": "has_authors",
+            "level": "EXISTENCE",
+            "status": "PASSED",
+            "detail": "1 author(s)",
+            "provider": null,
+            "confidence": 1.0
+          },
+          {
+            "id": "vchk_20260907T005138_03ab1ebe",
+            "schema_version": "1.0",
+            "created_at": "2026-09-07T00:51:38.463383+00:00",
+            "updated_at": "2026-09-07T00:51:38.463383+00:00",
+            "provenance": null,
+            "history": [],
+            "errors": [],
+            "name": "metadata_provider_count",
+            "level": "METADATA",
+            "status": "UNVERIFIED",
+            "detail": "Only 0 provider(s) corroborated; 1 required",
+            "provider": null,
+            "confidence": 1.0
+          },
+          {
+            "id": "vchk_20260907T005138_92544a9d",
+            "schema_version": "1.0",
+            "created_at": "2026-09-07T00:51:38.463405+00:00",
+            "updated_at": "2026-09-07T00:51:38.463405+00:00",
+            "provenance": null,
+            "history": [],
+            "errors": [],
+            "name": "content_extracted",
+            "level": "CONTENT",
+            "status": "UNVERIFIED",
+            "detail": "Content/evidence extraction is handled by the retrieval/evidence pipeline",
+            "provider": null,
+            "confidence": 1.0
+          }
+        ],
+        "levels": {
+          "EXISTENCE": "PASSED",
+          "METADATA": "UNVERIFIED",
+          "CONTENT": "UNVERIFIED"
+        },
+        "overall_status": "NEEDS_HUMAN_REVIEW",
+        "corroborated_metadata": {},
+        "metadata_match_ratio": 0.0
+      }
+    ]
+  },
+  "real_source_formatting": {
+    "success": true,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": null,
+    "metadata": {},
+    "stages": [
+      "synthesis",
+      "outline",
+      "writing",
+      "citation_audit",
+      "fact_audit",
+      "docx_generation"
+    ],
+    "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\real_record\\draft.md",
+    "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\real_record\\final.docx",
+    "draft": "# AUDIT FIXTURE - NOT FOR ACADEMIC USE\n\n## Temuan\n\nThe retrieved record is titled Deep learning. (Lecun et al., 2015)\n\n",
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ],
+    "docx_text": "AUDIT FIXTURE - NOT FOR ACADEMIC USE\nTemuan\nThe retrieved record is titled Deep learning. (Lecun et al., 2015)\nReferences\nYann LeCun, Yoshua Bengio, & Geoffrey Hinton (2015). Deep learning. Nature. https://doi.org/10.1038/nature14539"
+  },
+  "real_doi_wrong_metadata": {
+    "state": "DOI_VERIFIED",
+    "report": {
+      "id": "vrep_20260907T005139_c2106b4e",
+      "schema_version": "1.0",
+      "created_at": "2026-09-07T00:51:39.943063+00:00",
+      "updated_at": "2026-09-07T00:51:41.126016+00:00",
+      "provenance": {
+        "origin": "verification_engine",
+        "tool": null,
+        "query": null,
+        "retrieved_at": "2026-09-07T00:51:39.943048+00:00",
+        "raw_reference": null,
+        "notes": null
+      },
+      "history": [],
+      "errors": [],
+      "source_id": "src_20260907T005139_bd7ec593",
+      "checks": [
+        {
+          "id": "vchk_20260907T005141_19605af8",
+          "schema_version": "1.0",
+          "created_at": "2026-09-07T00:51:41.125799+00:00",
+          "updated_at": "2026-09-07T00:51:41.125800+00:00",
+          "provenance": null,
+          "history": [],
+          "errors": [],
+          "name": "title_nonempty",
+          "level": "EXISTENCE",
+          "status": "PASSED",
+          "detail": "Title present",
+          "provider": null,
+          "confidence": 1.0
+        },
+        {
+          "id": "vchk_20260907T005141_c2417c5c",
+          "schema_version": "1.0",
+          "created_at": "2026-09-07T00:51:41.125856+00:00",
+          "updated_at": "2026-09-07T00:51:41.125857+00:00",
+          "provenance": null,
+          "history": [],
+          "errors": [],
+          "name": "doi_format",
+          "level": "EXISTENCE",
+          "status": "PASSED",
+          "detail": "DOI normalized to 10.1038/nature14539",
+          "provider": null,
+          "confidence": 1.0
+        },
+        {
+          "id": "vchk_20260907T005141_b69e1b6d",
+          "schema_version": "1.0",
+          "created_at": "2026-09-07T00:51:41.125884+00:00",
+          "updated_at": "2026-09-07T00:51:41.125885+00:00",
+          "provenance": null,
+          "history": [],
+          "errors": [],
+          "name": "has_authors",
+          "level": "EXISTENCE",
+          "status": "PASSED",
+          "detail": "3 author(s)",
+          "provider": null,
+          "confidence": 1.0
+        },
+        {
+          "id": "vchk_20260907T005141_cb2f90d3",
+          "schema_version": "1.0",
+          "created_at": "2026-09-07T00:51:41.125909+00:00",
+          "updated_at": "2026-09-07T00:51:41.125909+00:00",
+          "provenance": null,
+          "history": [],
+          "errors": [],
+          "name": "metadata_title_match",
+          "level": "METADATA",
+          "status": "PASSED",
+          "detail": "Title corroborated by crossref",
+          "provider": "crossref",
+          "confidence": 0.0
+        },
+        {
+          "id": "vchk_20260907T005141_201acf3d",
+          "schema_version": "1.0",
+          "created_at": "2026-09-07T00:51:41.125965+00:00",
+          "updated_at": "2026-09-07T00:51:41.125966+00:00",
+          "provenance": null,
+          "history": [],
+          "errors": [],
+          "name": "metadata_provider_count",
+          "level": "METADATA",
+          "status": "PASSED",
+          "detail": "1 distinct provider(s) corroborated metadata",
+          "provider": null,
+          "confidence": 1.0
+        },
+        {
+          "id": "vchk_20260907T005141_50d9c460",
+          "schema_version": "1.0",
+          "created_at": "2026-09-07T00:51:41.125993+00:00",
+          "updated_at": "2026-09-07T00:51:41.125994+00:00",
+          "provenance": null,
+          "history": [],
+          "errors": [],
+          "name": "content_extracted",
+          "level": "CONTENT",
+          "status": "UNVERIFIED",
+          "detail": "Content/evidence extraction is handled by the retrieval/evidence pipeline",
+          "provider": null,
+          "confidence": 1.0
+        }
+      ],
+      "levels": {
+        "EXISTENCE": "PASSED",
+        "METADATA": "PASSED",
+        "CONTENT": "UNVERIFIED"
+      },
+      "overall_status": "DOI_VERIFIED",
+      "corroborated_metadata": {
+        "venue": "Nature",
+        "year": 1900,
+        "doi": "10.1038/nature14539",
+        "url": "https://doi.org/10.1038/nature14539",
+        "citation_count": 76014
+      },
+      "metadata_match_ratio": 0.0
+    }
+  },
+  "duplicate_reference_keys": {
+    "keys": [
+      "fixture2024",
+      "fixture2024"
+    ],
+    "in_text": [
+      "Fixture, 2024",
+      "Fixture, 2024"
+    ]
+  },
+  "manifest_relocation": {
+    "loaded_directory": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\old",
+    "expected": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\new"
+  },
+  "file_uri_retrieval": {
+    "success": true,
+    "parsed_text": "AUDIT FILE URI SENTINEL"
+  },
+  "abstract_state": {
+    "success": true,
+    "state": "FULLTEXT_RETRIEVED",
+    "method": "abstract"
+  },
+  "large_valid_json": "https://example.invalid/audit returned non-JSON content (detail='Unterminated string starting at: line 1 column 10 (char 9)', error_code='INVALID_JSON', status=200, url='https://example.invalid/audit')",
+  "existing_monitor": {
+    "error": "URLError(ConnectionRefusedError(10061, 'No connection could be made because the target machine actively refused it', None, 10061, None))"
+  },
+  "api_untrusted_origin_write": {
+    "http": 200,
+    "cors": "*",
+    "response": {
+      "success": true,
+      "needs_human_review": false,
+      "review_prompt": null,
+      "output": null,
+      "error_message": null,
+      "metadata": {},
+      "stages": [
+        "synthesis",
+        "outline",
+        "writing",
+        "citation_audit",
+        "fact_audit",
+        "docx_generation"
+      ],
+      "draft_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\api_arbitrary_root\\draft.md",
+      "docx_path": "C:\\Users\\HYPE AMD\\AppData\\Local\\Temp\\autonomi audit fixtures o2op6epa\\api_arbitrary_root\\final.docx"
+    }
+  },
+  "api_recorded_stages": {
+    "success": true,
+    "events": [
+      {
+        "time": "2026-09-07T00:51:43.294329+00:00",
+        "stage": "academic",
+        "status": "running",
+        "message": "Academic workflow started"
+      },
+      {
+        "time": "2026-09-07T00:51:43.330043+00:00",
+        "stage": "academic",
+        "status": "success",
+        "message": "Academic workflow completed"
+      }
+    ]
+  },
+  "api_malformed_json": "RemoteDisconnected('Remote end closed connection without response')"
+}

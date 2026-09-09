@@ -105,12 +105,27 @@ class VerificationEngine:
 
     # ------------------------------------------------------------ corroborate
     def _corroborate(self, source: Source) -> list[tuple[str, Source, float]]:
-        """Return ``(provider_name, match, ratio)`` for corroborating providers."""
+        """Return ``(provider_name, match, ratio)`` for corroborating providers.
+        Both DOI and bibliographic lookups must satisfy the title-identity
+        threshold (audit A03): a DOI resolving to a record with a materially
+        different title identifies a *different* work, not a verification.
+        """
         results: list[tuple[str, Source, float]] = []
         for provider in self._providers:
             match = self._lookup(source, provider)
             if match is not None:
                 ratio = self._match_ratio(source.title, match.title)
+                if ratio < self._match_threshold:
+                    self._logger.warning(
+                        "Provider record identity mismatch; treated as no corroboration",
+                        extra={
+                            "provider": getattr(provider, "name", type(provider).__name__),
+                            "candidate_title": source.title,
+                            "provider_title": match.title,
+                            "ratio": ratio,
+                        },
+                    )
+                    continue
                 results.append((getattr(provider, "name", type(provider).__name__), match, ratio))
         return results
 
@@ -162,6 +177,22 @@ class VerificationEngine:
                 provider=name,
                 confidence=ratio,
             ))
+        # Material identity mismatch (audit A03): the candidate may carry a DOI
+        # or title whose provider record names a different work. Corroboration
+        # is *not* optional here — the provider records retrieved during lookup
+        # are re-checked so a wrong-article DOI is reported, never backfilled.
+        for name, mismatch in self._identity_mismatches(source):
+            report.add_check(self._check(
+                name="metadata_identity_match",
+                level=VerificationLevel.METADATA,
+                status=VerificationCheckStatus.FAILED,
+                detail=(
+                    f"Provider {name} record does not match the candidate: "
+                    f"candidate title {source.title!r} vs provider title {mismatch.title!r}"
+                ),
+                provider=name,
+                confidence=self._match_ratio(source.title, mismatch.title),
+            ))
 
         # Corroborated metadata is merged (preferring the candidate's own values).
         if corroborations:
@@ -196,7 +227,15 @@ class VerificationEngine:
 
     # -------------------------------------------------------------- lookups
     def _lookup(self, source: Source, provider: Any) -> Source | None:
-        """Return a corroborating provider record, or ``None`` when none found."""
+        """Return the provider record for ``source``, or ``None`` when none found.
+        The raw record is returned even when its title diverges: identity
+        checking happens centrally in :meth:`_corroborate` /
+        :meth:`_identity_mismatches` so mismatches are *reported* (audit A03),
+        never silently dropped or silently accepted.
+        """
+        return self._fetch_record(source, provider)
+    def _fetch_record(self, source: Source, provider: Any) -> Source | None:
+        """Fetch the provider record for a DOI or bibliographic lookup."""
         if source.doi:
             lookup = getattr(provider, "lookup_by_doi", None)
             if callable(lookup):
@@ -223,6 +262,23 @@ class VerificationEngine:
                     "Bibliographic lookup failed", extra={"provider": getattr(provider, "name", ""), "error": str(exc)}
                 )
         return None
+    def _identity_mismatches(self, source: Source) -> list[tuple[str, Source]]:
+        """Return ``(provider_name, record)`` pairs that name a different work.
+        Used to report a materially divergent DOI/bibliographic record as a
+        FAILED identity check instead of legitimizing wrong metadata (A03).
+        """
+        mismatches: list[tuple[str, Source]] = []
+        if not source.title:
+            return mismatches
+        for provider in self._providers:
+            record = self._fetch_record(source, provider)
+            if record is None or not record.title:
+                continue
+            if self._match_ratio(source.title, record.title) < self._match_threshold:
+                mismatches.append(
+                    (getattr(provider, "name", type(provider).__name__), record)
+                )
+        return mismatches
 
     # --------------------------------------------------------------- helpers
     @staticmethod
@@ -290,6 +346,16 @@ class VerificationEngine:
             return SourceState.REJECTED
 
         if metadata is VerificationCheckStatus.FAILED:
+            # A material identity mismatch (audit A03) is a *review*, not an
+            # automatic rejection: the record exists but belongs to a different
+            # work, so a human must resolve which metadata is correct.
+            identity_failed = any(
+                check.name == "metadata_identity_match"
+                and check.status is VerificationCheckStatus.FAILED
+                for check in report.checks
+            )
+            if identity_failed:
+                return SourceState.NEEDS_HUMAN_REVIEW
             return SourceState.CONDITIONAL
 
         if metadata is VerificationCheckStatus.PASSED:

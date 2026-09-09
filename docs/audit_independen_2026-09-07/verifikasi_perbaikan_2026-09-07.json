@@ -1,0 +1,80 @@
+{
+  "fixture_warning": "NOT ACADEMIC OUTPUT. Adversarial fixtures only.",
+  "temporary_directory": "C:\\Users\\HYPEAM~1\\AppData\\Local\\Temp\\autonomi verify fixtures 48_yu6gs",
+  "nonexistent_evidence": {
+    "success": false,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": "orchestrator_agent raised an unhandled exception: Academic integrity gate rejected the payload (violations=['claim clm_audit references nonexistent supporting evidence evd_nonexistent'])",
+    "metadata": {},
+    "stages": [],
+    "draft_path": null,
+    "docx_path": null,
+    "files": []
+  },
+  "internal_tokens": {
+    "success": false,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": "orchestrator_agent raised an unhandled exception: Academic integrity gate rejected the payload (violations=['important claim clm_audit has no supporting evidence'])",
+    "metadata": {},
+    "stages": [],
+    "draft_path": null,
+    "docx_path": null,
+    "files": []
+  },
+  "author_year_orphan": {
+    "success": false,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": "orchestrator_agent raised an unhandled exception: Academic integrity gate rejected the payload (violations=['important claim clm_audit has no supporting evidence'])",
+    "metadata": {},
+    "stages": [],
+    "draft_path": null,
+    "docx_path": null,
+    "files": []
+  },
+  "conflict_undisclosed": {
+    "success": false,
+    "needs_human_review": false,
+    "review_prompt": null,
+    "output": null,
+    "error_message": "orchestrator_agent raised an unhandled exception: Academic integrity gate rejected the payload (violations=['claim clm_audit references nonexistent supporting evidence evd_nonexistent', 'conflicted claim clm_audit carries no disclosure: add a qualifier or attach the contradicting evidence'])",
+    "metadata": {},
+    "stages": [],
+    "draft_path": null,
+    "docx_path": null,
+    "files": []
+  },
+  "overwrite": {
+    "old_draft_preserved": true,
+    "backups": [
+      "draft.md.20260909T202025.675942Z.bak"
+    ]
+  },
+  "real_doi_wrong_metadata": {
+    "state": "NEEDS_HUMAN_REVIEW",
+    "ratio": 0.0
+  },
+  "positive_control": {
+    "success": true,
+    "files": [
+      "citation_audit.json",
+      "draft.md",
+      "fact_audit.json",
+      "final.docx"
+    ]
+  },
+  "api_untrusted_origin_write": {
+    "http": 403,
+    "success": false,
+    "error": "cross-origin requests are not allowed"
+  },
+  "api_malformed_json": {
+    "http": 400,
+    "error_code": "INVALID_REQUEST"
+  }
+}

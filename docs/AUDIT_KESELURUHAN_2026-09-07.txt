@@ -1,0 +1,660 @@
+===============================================================================
+AUDIT KESELURUHAN - AUTONOMI AGENTIC ILMIAH
+===============================================================================
+Tanggal    : 2026-09-07
+Lokasi     : C:\Users\HYPE AMD\Downloads\VIBE CODING\AUTONOMI AGENTIC ILMIAH\DATA BASE
+GitHub     : https://github.com/Chigoov/Agentic-Module.git
+Lingkup    : Audit total untuk penggunaan pribadi multi-laptop
+Metode     : Pembacaan menyeluruh source (~12.000 LOC, 110 file Python),
+             health check, seluruh test suite (272 unit + 10 integration),
+             11 skenario uji dinamis, uji clone ke path lain,
+             verifikasi Crossref live.
+Aturan     : Tidak ada kode project yang diubah. Fixture uji di
+             state/audit_sandbox/ (di-gitignore); output uji di
+             VIBE CODING\TUGAS AUDIT_SANDBOX\ (boleh dihapus).
+
+===============================================================================
+1. EXECUTIVE SUMMARY
+===============================================================================
+
+Project ini BUKAN proyek kosmetik - inti evidence-control-nya nyata,
+dirancang dengan disiplin, dan sebagian gate-nya terbukti bekerja saat
+diuji. Namun audit menemukan kesenjangan besar antara dokumentasi dan
+kenyataan, plus beberapa bug nyata yang membatalkan janji utama sistem.
+
+Yang jujur bisa dikatakan:
+
+1) Fondasi deterministic-nya berkualitas baik. Schemas Pydantic dengan
+   state machine yang dijaga, storage atomik dengan boundary check,
+   HTTP client dengan retry/backoff yang benar, verifikasi provider
+   (Crossref/OpenAlex) yang tidak pernah mengarang record.
+
+2) Sistem ini BELUM "agentic" dan BELUM end-to-end autonomous.
+   Workflow akademik adalah pipeline deterministic: input JSON harus
+   sudah berisi sources/claims/evidence/outline. Agent-agent peneliti
+   (Discovery, Retrieval, Evidence, Verification) ada dan berkualitas,
+   tetapi TIDAK dipanggil oleh workflow manapun. Model router adalah
+   stub yang selalu gagal (PROVIDER_CLIENT_NOT_IMPLEMENTED).
+
+3) Dua bug menggagalkan janji inti "output akademik yang dapat
+   dipercaya":
+   - P0-1: Token sitasi internal (turn0search5, view10filecite4,
+     filecite) lolos tanpa disentuh ke draft final dan DOCX.
+     citation_audit.json tetap "passed: true". Tidak ada gate kode.
+   - P0-2: Dua sumber berbeda dengan author+tahun sama menghasilkan
+     in-text citation identik "(Nashrullah, 2023; Nashrullah, 2023)"
+     tanpa disambiguasi APA 7 (2023a/2023b).
+
+4) P0-3 (portability): Setelah git clone, repo bernama apa pun selain
+   "DATA BASE" (default clone dari GitHub: Agentic-Module) gagal total
+   - 29 test gagal, health check exit 1.
+
+5) Fase 7-18: selesai secara kode, belum selesai secara substansi
+   (rincian di bagian 5).
+
+KESIMPULAN SATU KALIMAT:
+Project ini nyaman dipakai pribadi HANYA jika: (a) folder selalu
+dinamai "DATA BASE", (b) input JSON selalu disiapkan manual, dan
+(c) draft final selalu diperiksa manual - karena gate otomatis untuk
+token internal, sitasi ganda, dan marker [sumber belum lengkap]
+BELUM ada di kode.
+
+===============================================================================
+2. STATUS KESEHATAN PROJECT
+===============================================================================
+
+[OK]  python -m src check (laptop asli)     - lulus, spec 1.0, fase 18
+[OK]  python -m pytest -q                    - 272 passed, 10 deselected (2.38s)
+[OK]  python -m pytest -m integration -q     - 10 passed (15.21s)
+[OK]  python -m src check (clone, folder "DATA BASE") - lulus
+[GAGAL] python -m src check (clone, folder "Agentic-Module") - exit 1
+[WARN] Monitor http://127.0.0.1:8000 - tidak berjalan; saat dinyalakan
+       manual: GET OK, POST path-invalid crash
+[OK]  Dependency - minimal (4 runtime dep), pinned, Python >=3.11
+      (teruji jalan di 3.14)
+[OK]  Git - 158 file tracked; [WARN] dist/*.zip ikut tracked
+
+Kondisi: "sehat tapi rapuh" - sehat di konfigurasi laptop asli,
+rapuh terhadap perubahan nama folder lokasi.
+
+===============================================================================
+3. HASIL TEST
+===============================================================================
+
+Test suite bawaan: 272 unit + 10 integration, semua lulus, sangat
+cepat. Kualitas baik untuk yang diuji. NAMUN skenario dinamis
+menunjukkan test suite TIDAK menguji hal yang paling penting:
+
+No  Skenario                          Hasil
+--  --------------------------------  ---------------------------------
+1   Topik sederhana via plan          EXIT 0, plan JSON valid  [OK]
+2   Topik PKM-RSH Edjust via plan     EXIT 0 [OK] (mode detection
+                                      hanya cek kata "deep")
+3   run-academic happy path           EXIT 0, draft+audit+DOCX [OK]
+4   Dua sumber collision author+tahun
+    -> draft memuat sitasi identik, audit passed: true  [BUG]
+5   Token internal di claim/evidence
+    -> token lolos utuh ke draft & DOCX, audit passed [BUG]
+6   Sumber metadata tidak lengkap
+    -> draft "(Laporan, n.d.)", referensi "[missing: author]",
+       DOCX dibuat; [sumber belum lengkap] TIDAK muncul  [SETENGAH]
+7   DOI palsu via lookup_by_doi
+    -> IntegrationError crash; kontrak "return None" dilanggar [BUG]
+8   DOI valid via lookup_by_doi
+    -> metadata nyata dari Crossref (Nature 2013)  [OK]
+9   Claim penting tanpa evidence
+    -> workflow GAGAL dengan benar; DOCX ditolak  [OK - gate bekerja]
+10  Monitor: GET OK; POST valid 200;
+    POST path-invalid -> koneksi diputus tanpa JSON  [WARN]
+11  Clone ke path lain
+    -> folder "Agentic-Module" gagal total;
+       rename "DATA BASE" -> check OK, 2 test gagal
+       (butuh TUGAS 1 fisik)  [BUG]
+12  Payload kosong (tanpa claims/sources/outline)
+    -> success: true, draft kosong  [DIPERTANYAKAN]
+
+Kesimpulan test: suite memberi rasa aman palsu untuk aspek
+anti-halusinasi output - tidak ada satu pun test untuk token internal,
+disambiguasi sitasi, atau marker sumber belum lengkap.
+
+===============================================================================
+4. TEMUAN BUG/RISIKO BERDASARKAN PRIORITAS
+===============================================================================
+
+--- P0 (WAJIB diperbaiki sebelum dipercaya) ---
+
+P0-1. TIDAK ADA GATE TOKEN SITASI INTERNAL DI KODE
+  File    : src/agents/audit.py (CitationAuditAgent, seluruh file);
+            src/tools/citation_manager.py (hanya orphan key)
+  Masalah : Aturan "final output tidak boleh memuat turn..., view...,
+            search..., filecite" hanya hidup di AGENTS.md/SKILL.md.
+            Tidak ada satu baris kode pun yang men-scan draft.
+  Bukti   : Skenario 5 - draft final berisi token, audit tetap passed.
+  Dampak  : Melanggar AGENT_CONSTITUTION & rules; output "final"
+            membawa artefak token ChatGPT ke dokumen akademik.
+  Saran   : Tambah scan regex \b(turn|view|search|filecite)\w*\d+\b
+            di CitationAuditAgent; jika match -> passed=false.
+            Sekitar 15 baris + test.
+
+P0-2. DISAMBIGUASI SITASI TIDAK KONSISTEN (WRITER vs AUDIT)
+  File    : src/tools/citation_manager.py (~baris 30-45) vs
+            src/agents/audit.py (~baris 40) vs
+            src/tools/reference_formatter.py
+  Masalah : Writer mendaftar dua sumber "Nashrullah, 2023" sebagai
+            nashrullah2023a dan nashrullah2023b, tapi menulis in-text
+            human-form IDENTIK "(Nashrullah, 2023)" untuk keduanya.
+            Audit memakai key tanpa suffix: nashrullah2023a di draft
+            akan dianggap orphan (false positive), dan human-form
+            identik lolos (false negative). Dua arah salah sekaligus.
+  Bukti   : Skenario 4 - audit passed padahal sitasi ambigu.
+  Dampak  : Pelanggaran APA 7 (2023a/2023b wajib); pembaca tidak bisa
+            membedakan dua sumber; audit memberi jaminan palsu.
+  Saran   : Satukan logika key; format_in_text_author_year menerima
+            suffix dari CitationManager; Writer render "2023a";
+            Audit derive key yang sama dari draft.
+
+P0-3. CLONE DENGAN NAMA FOLDER DEFAULT GITHUB GAGAL TOTAL
+  File    : src/core/paths.py (SYSTEM_ROOT_DIRNAME = "DATA BASE";
+            _looks_like_system_root menuntut nama persis)
+  Bukti   : Skenario 11 - clone ke "Repo Uji Kedua": 29 test failed,
+            15 errors, check exit 1. Rename ke "DATA BASE" -> pulih.
+  Dampak  : Requirement utama (setup mudah setelah git clone) gagal
+            untuk siapa pun yang tidak tahu harus rename folder.
+  Saran   : (a) README: git clone ... "DATA BASE";
+            (b) error message menyebut solusi (rename atau set
+            AUTONOMI_SYSTEM_ROOT); (c) fallback: kandidat root yang
+            memuat spec files wajib diterima dengan warning.
+
+--- P1 (PENTING, segera setelah P0) ---
+
+P1-1. WORKFLOW AKADEMIK TIDAK TERHUBUNG KE VERIFICATION/DISCOVERY/
+      RETRIEVAL/EVIDENCE ENGINE
+  File    : src/workflows/orchestrator.py; src/agents/research.py;
+            src/tools/verification_tool.py
+  Masalah : Modul terbaik project ini tidak dipanggil pipeline CLI.
+  Dampak  : Klaim README "DISCOVER -> VERIFY -> RETRIEVE -> ... ->
+            AUDIT" hanya terjadi di 3 tahap terakhir.
+  Saran   : Tambah perintah "python -m src research --input-json"
+            yang menjalankan Discovery->Verification->Retrieval->
+            Evidence->ClaimVerification->AcademicWorkflow.
+
+P1-2. MARKER [SUMBER BELUM LENGKAP] TIDAK DIIMPLEMENTASIKAN
+  File    : src/tools/reference_formatter.py ([missing: field]);
+            src/agents/writer.py
+  Bukti   : Skenario 6 - in-text "(Laporan, n.d.)" (dari slug judul,
+            terlihat seperti sitasi sah); tidak ada marker di mana pun.
+  Dampak  : Teks terlihat lengkap padahal sumber gapan; melawan
+            tujuan anti-halusinasi; tidak sesuai kontrak AGENTS.md.
+  Saran   : Writer: sumber gagal metadata minimum -> render
+            [sumber belum lengkap]; jangan registrasi ke ref list.
+
+P1-3. MONITOR POST /api/run-academic CRASH TANPA RESPONSE
+  File    : src/runtime/monitor.py, do_POST (tanpa try/except;
+            tanpa validasi project_path)
+  Bukti   : Skenario 10 - POST path drive tak ada: koneksi putus.
+            Monitor juga menerima path absolut bebas (fixture membuat
+            folder di luar workspace tanpa peringatan).
+  Saran   : try/except -> JSON error + HTTP 500; validasi project_path
+            di dalam workspace_root (pakai paths.workspace_path).
+
+P1-4. MONITOR: CORS "*" + TANPA AUTENTIKASI
+  File    : src/runtime/monitor.py, _send
+  Dampak  : Semua website di browser bisa mengirim request ke
+            http://127.0.0.1:8000 dan men-trigger workflow penulis
+            file (drive-by local API).
+  Saran   : Hapus CORS wildcard (UI same-origin, tidak butuh), atau
+            batasi ke http://127.0.0.1:8000; token statis dari .env
+            untuk POST.
+
+P1-5. lookup_by_doi MELEMPAR EXCEPTION UNTUK DOI TIDAK DITEMUKAN
+  File    : src/tools/crossref.py (docstring janji "return None");
+            src/tools/http_client.py (HTTP 404 -> IntegrationError)
+  Bukti   : Skenario 7 - DOI palsu -> traceback.
+  Catatan : VerificationEngine._lookup kebetulan menangkap exception,
+            jadi pipeline verifikasi selamat - perlindungan tidak
+            disengaja.
+  Saran   : Tangkap IntegrationError status==404 -> return None.
+
+P1-6. MODEL ROUTER = STUB. "MULTI-MODEL AI" BELUM ADA.
+  File    : src/routing/model_router.py (_execute selalu gagal
+            PROVIDER_CLIENT_NOT_IMPLEMENTED); config/system.yaml
+            (model_routing.status: PENDING_CONFIGURATION)
+  Dampak  : Semua yang menunggu model (paraphrase, narrative
+            synthesis, verifikasi konten) tidak bisa hidup.
+            Untuk target Gemini: belum ada adapter sama sekali.
+  Saran   : Adapter Gemini (REST generateContent, key dari env
+            GEMINI_API_KEY via api_key_env) dengan kontrak
+            ModelRequest/ModelResponse yang sudah ada. +/- 1 file
+            + test; membuka seluruh fase 16-18.
+
+--- P2 (KENYAMANAN & KETAHANAN) ---
+
+P2-1. Dua test butuh kondisi laptop asli (test_paths.py:
+      test_project_workspaces_discovered & test_workspace_path_
+      resolves_correctly gagal di clone fresh karena butuh TUGAS 1).
+      Saran: gunakan tmp fixture workspace.
+P2-2. dist/autonomi-agentic-ilmiah-skill.zip tracked di git
+      (artefak build selalu stale). Saran: gitignore dist/, skrip build.
+P2-3. Empty payload -> success: true. Saran: validasi minimum
+      (>=1 source & >=1 claim) -> error jelas.
+P2-4. Mode detection naif: mode = DEEP_RESEARCH if "deep" in text -
+      "deep learning" salah terdeteksi. Saran: keyword eksplisit
+      "deep research" atau parameter CLI.
+P2-5. Artefak non-ASCII di output (ditemukan "A Section-sign" mojibake
+      di draft). Pilih satu encoding; normalisasi saat render.
+P2-6. Config tools semua NOT_IMPLEMENTED/enabled:false padahal adapter
+      ada dan Crossref jalan (dipakai default VerificationEngine).
+      Jelaskan di comment, atau sinkronkan status.
+P2-7. Catat eksplisit di README: laptop lain minimal Python 3.11.
+
+--- P3 (KESEPAAN ENGINEERING) ---
+
+- progress.jsonl append-only tanpa rotasi.
+- monitor.log_message di-silence - request tidak ter-audit.
+- README License TBD (tidak mendesak untuk pemakaian pribadi).
+- Duplikasi _project_from_payload antara cli.py dan monitor.py.
+
+===============================================================================
+5. JAWABAN PERTANYAAN AUDIT KRITIS
+===============================================================================
+
+Q1. Apakah sistem ini benar-benar "agentic"?
+A:  TIDAK - saat ini workflow deterministic + pustaka agent yang tidak
+    terhubung. Pipeline tetap (synthesis->outline->write->audit) dengan
+    gate deterministic. Agents di research.py punya bentuk agentic
+    tapi tidak ada orchestrator yang memanggilnya dengan keputusan.
+    Ini bukan hal buruk untuk tujuan kamu - deterministic lebih aman -
+    tapi jangan sebut agentic sampai "research" command (P1-1) dan
+    model router (P1-6) hidup.
+
+Q2. Apakah fase 7-18 selesai substansial?
+A:  Per fase:
+    - F7  (research agents)   : kode ada, tidak terhubung. SETENGAH.
+    - F8  (orchestrator)      : bekerja untuk segmen writing. YA, terbatas.
+    - F9  (telemetry)         : nyata tapi hanya event routing yang
+                                selalu gagal. FORMAL.
+    - F10-12 (audit)          : fact audit bekerja (terbukti skenario 9);
+                                citation audit bocor (P0-1, P0-2). SEBAGIAN.
+    - F13 (DOCX)              : bekerja, backup otomatis. YA, minimal.
+    - F14 (academic mode)     : end-to-end bekerja (skenario 3). YA.
+    - F15 (deep research)     : wrapper tipis; menambah kata "deep"
+                                lalu jalankan academic mode yang sama;
+                                tidak ada iterasi discovery. SIMULATIF.
+    - F16-18                  : monitor berfungsi sebagian (P1-3/P1-4);
+                                skill packaging = instruksi markdown +
+                                zip statis; optimization tidak ditemukan
+                                substansinya. SEBAGIAN/SIMULATIF.
+
+Q3. Apakah "mencari sumber, mensitasi, membuat daftar pustaka" end-to-end?
+A:  TIDAK. Mensitasi & daftar pustaka: ya (dengan caveat P0-2).
+    Mencari sumber: tool-nya nyata (Crossref live terbukti) tapi tidak
+    dipanggil workflow. Input JSON mensyaratkan sources sudah ada,
+    jadi "mencari" tidak pernah terjadi di pipeline utama.
+
+Q4. Apakah plugin/skill cukup untuk orang awam?
+A:  Sebagai skill untuk AI agent (Kiro/Claude dll.): cukup baik -
+    SKILL.md jelas, rules konsisten. Sebagai package untuk orang awam:
+    TIDAK - orang awam tidak akan bisa menyiapkan input.json yang valid
+    (skema strict, extra="forbid"), tidak ada generator template, tidak
+    ada command init. Zip dist statis dan stale (P2-2).
+
+Q5. Apakah monitor merekam SEMUA tahap kerja agent?
+A:  TIDAK. record_progress hanya dipanggil di: check, plan, run-academic
+    (mulai/selesai via monitor) - dan TIDAK dipanggil sama sekali oleh
+    CLI run-academic. Tahap synthesis/outline/writing/audit/docx tidak
+    merekam event individual. Dashboard menampilkan 8 node yang selalu
+    "waiting" untuk event yang tidak pernah direkam - dashboard lebih
+    optimistis daripada datanya.
+
+Q6. Apakah ada gate otomatis menolak turn.../view.../search.../filecite?
+A:  TIDAK. Terbukti eksperimen (skenario 5). Hanya aturan dokumentasi.
+    Ini P0-1.
+
+Q7. Apakah model routing & provider integration nyata?
+A:  Routing = interface + telemetry nyata; provider client = TIDAK ADA.
+    status() yang jujur (turun ke PENDING_CONFIGURATION bila prasyarat
+    kurang) adalah desain baik. Untuk Gemini: nol kode adapter.
+
+Q8. Batas minimal agar layak dipakai pribadi di beberapa laptop?
+A:  1. P0-3 (clone naming) - tanpa ini setup laptop kedua gagal.
+    2. P0-1 + P0-2 - tanpa ini proofread manual setiap output.
+    3. P1-3 (monitor crash) - opsional jika monitor tidak dipakai.
+    4. pip install -r requirements.txt sudah cukup baik hari ini.
+    Sisanya (P2+) kenyamanan.
+
+Q9. Bagian paling berisiko untuk pengguna awam?
+A:  (1) Menyiapkan input.json - salah skema = error tidak ramah;
+    (2) mempercayai "passed: true" pada citation_audit padahal bocor
+    (P0-1/2); (3) monitor yang menerima path bebas (P1-3) - orang awam
+    tidak sadar folder dibuat di luar workspace.
+
+Q10. Perubahan paling kecil yang membuat project jauh lebih dipercaya?
+A:  Tambahkan INTERNAL_TOKEN_PATTERN scan ke CitationAuditAgent + 3 test.
+    Sekitar 20 baris. Setelah itu klaim "final output bebas token
+    internal" benar-benar dijaga kode, bukan harapan.
+
+Q11. Localhost API cukup aman untuk pribadi?
+A:  Cukup untuk laptop pribadi yang dipakai hati-hati, TIDAK cukup
+    stand "aman". Tiga lubang: CORS * (website mana pun bisa memanggil
+    API), tanpa token, POST menerima path absolut. Perbaikan minimal:
+    hapus CORS wildcard + validasi path di dalam WORKSPACE_ROOT +
+    token statis opsional dari .env. Total +/- 30 baris.
+
+Q12. Bisa dipakai di laptop lain setelah git clone tanpa path khusus?
+A:  HANYA JIKA folder hasil clone diberi nama "DATA BASE". Selain itu:
+    gagal total (P0-3). Dependency aman (stdlib-heavy, pinned,
+    Python >=3.11). Config portable (env override + system.local.yaml).
+    Setelah rename: check lulus; 2 test butuh kondisi laptop asli (P2-1)
+    - tidak memblokir penggunaan.
+
+Q13. Struktur folder, spasi di nama, launcher Windows cukup portable?
+A:  Struktur: ya. Spasi: ya (semua akses via pathlib; launcher pakai
+    cd /d "%~dp0" dan -LiteralPath yang benar). Launcher: hampir -
+    OPEN_LIVE_PROGRESS.ps1 bagus (cek port dulu); START_MONITOR.bat
+    tidak mendeteksi Python tidak ada. Tidak ada setup.bat (venv +
+    install deps) - akan menaikkan kenyamanan drastis.
+
+Q14. Perlu GitHub Actions/CI?
+A:  YA, sepadan - bahkan untuk repo pribadi. Ini satu-satunya cara
+    test portability (P0-3, P2-1) tertangkap otomatis: workflow
+    Windows (mis. Ubuntu+Windows matrix) yang menjalankan pip install
+    -r requirements.txt && python -m src check && pytest -q akan gagal
+    di PR kalau ada regresi path/nama folder. Satu file YAML, gratis.
+
+Q15. Apakah audit trail cukup membuktikan sumber/evidence/sitasi
+     tidak dikarang?
+A:  Untuk evidence: KUAT. Evidence.quote_verified butuh exact
+    containment; mark_quote_verified bisa berubah false saat re-check;
+    candidates/search_log/evidence.jsonl append-only; VerificationReport
+    menyimpan provider & confidence; raw PoP dipertahankan.
+    Untuk sitasi: ADA CELAH - draft tidak menyimpan mapping
+    sitasi->source_id (human-form saja), sehingga pembuktian "sitasi X
+    berasal dari source Y" bergantung reconstruct manual. Tambahkan
+    sidecar citation_map.json dari Writer (key -> source_id + span).
+
+Q16. Apakah safeguard etik topik remaja 12-18 cukup kuat?
+A:  TIDAK DITEMUKAN safeguard spesifik di kode. Yang ada: general
+    human-review escalation (needs_human_review) dan claim gating.
+    Tidak ada klasifikasi topik sensitif, tidak ada flag penelitian
+    pada anak/remaja, tidak ada blocklist. Jika penting (PKM-RSH
+    Edjust menyentuh pendidikan): kata-kunci sensitif -> force
+    needs_human_review + disclaimer. Saat ini kepatuhan etik
+    sepenuhnya bergantung pada penggunanya.
+
+===============================================================================
+6. CATATAN SOURCE CODE PER FILE
+===============================================================================
+
+KUAT (pertahankan):
+- core/paths.py          : desain discovery bagus, env override, cache.
+                           Satu cacat: nama folder dipersyaratkan (P0-3).
+- core/storage.py        : atomic write, boundary check, backup
+                           timestamp - contoh terbaik di repo.
+- core/config.py         : layering YAML->local->.env->env, validasi
+                           ketat & provenance; extra="forbid" menangkap
+                           typo. Sangat baik.
+- tools/http_client.py   : retry + jitter + truncated raw body +
+                           structured errors; kelas dunia untuk
+                           stdlib-only.
+- tools/verification_tool.py : tidak pernah pass tanpa korroborasi
+                           provider; degradasi jujur.
+- schemas/               : state machine terjaga (transition guards),
+                           evidence verbatim enforcement, outline
+                           anti-duplicate.
+- tools/evidence_extractor.py : exact containment, tidak ada percobaan
+                           "pintar".
+
+BERMASALAH:
+- agents/audit.py        : audit hanya orphan-detection; tanpa token
+                           scan (P0-1); key derivation beda dari writer
+                           (P0-2).
+- agents/writer.py       : in-text human form tidak pakai disambiguated
+                           key (P0-2); tanpa marker sumber belum lengkap
+                           (P1-2); tanpa citation sidecar.
+- agents/research.py     : agent bagus, mati (P1-1); TaskAnalyzer naif
+                           (P2-4).
+- routing/model_router.py: stub jujur tapi masih stub (P1-6).
+- runtime/monitor.py     : no auth, CORS *, path bebas, crash handler
+                           (P1-3/4); dashboard > data.
+- runtime/cli.py + monitor.py : duplikasi _project_from_payload.
+- tools/crossref.py      : lookup_by_doi kontrak rusak (P1-5);
+                           _search bagus.
+- tools/docx_generator.py: heading/quote sederhana tapi benar; entry
+                           [missing: ...] tidak diberi penanda berbeda.
+
+TEST YANG KURANG: token internal scan, disambiguasi APA, marker
+metadata, monitor POST error path, lookup_by_doi 404, clone fresh
+workspace (test_paths kondisi global).
+
+===============================================================================
+7. EVALUASI ARSITEKTUR
+===============================================================================
+
+Lapisan bersih dan disiplin: core (infra) -> schemas (kontrak) ->
+tools (kapabilitas) -> agents (koordinasi) -> workflows (orkestrasi) ->
+runtime (bootstrap/CLI/monitor). Dependency satu arah. Nama "agents"
+untuk banyak komponen deterministic agak oversell, tapi pemisahan
+tool vs agent dipertahankan konsisten.
+
+Keputusan arsitektur yang benar:
+1) Storage atomik + append-only JSONL untuk audit.
+2) Konfigurasi berlapis dengan validasi.
+3) Status integrasi tidak pernah diklaim tanpa bukti runtime
+   (_integration_verified hanya diset test nyata).
+4) No-fabrication ditegakkan di tipe data, bukan hanya konvensi.
+
+Kelemahan struktural:
+1) Pipeline utama tidak memanfaatkan modul terkuatnya (verifikasi/
+   discovery).
+2) Tidak ada "registry of stages" - tahap dipanggil manual di
+   orchestrator; menambah tahap = edit orchestrator (rawan lupa
+   audit baru).
+3) Monitor & CLI duplikasi logic.
+4) Tidak ada CI.
+
+Penyederhanaan yang mungkin: hapus runtime_dir alias setelah migrasi;
+gabungkan _project_from_payload; pertimbangkan hapus optimization.py
+jika tidak dipanggil.
+
+===============================================================================
+8. EVALUASI WORKFLOW AKADEMIK
+===============================================================================
+
+Alur nyata:
+JSON -> Project -> Synthesis (writable-only) -> Outline (auto bila
+tidak ada) -> Writer (gated) -> CitationAudit -> FactAudit -> DOCX
+(hanya jika audit lulus) -> draft.md + final.docx + JSON audit.
+
+Yang bekerja nyata:
+- Gate claim penting tanpa evidence memblokir DOCX (terbukti).
+- Reference list dari CitationManager (tanpa invent).
+- excluded_claims dilaporkan.
+- Verbatim quotes hanya jika verbatim+verified+precise locator.
+
+Yang setengah jadi:
+1) Input JSON harus "sudah diperiksa" - tak ada jalur dari pencarian
+   nyata.
+2) Draft = skeleton, bukan prosa akademik - tanpa model router tidak
+   akan per menjadi prosa; jujur di docstring, tapi user akhir mungkin
+   mengharapkan naskah.
+3) CitationAuditAgent menulis audit JSON saat gagal, tapi Orchestrator
+   hanya mengembalikan "Audit failed" tanpa detail ke CLI (audit files
+   perlu dibaca manual).
+
+Deep research: wrapper tipis; plan hampir sama dengan academic; tanpa
+loop discovery-evidence. SIMULATIF.
+
+===============================================================================
+9. EVALUASI SITASI, EVIDENCE, ANTI-HALUSINASI
+===============================================================================
+
+Anti-halusinasi di level data: KUAT.
+- Source tanpa title dibuang; tidak ada generate-metadata.
+- year None -> "n.d."; page/location hanya dari data nyata.
+- Evidence verbatim wajib exact match; paraphrase terpisah dan
+  non-citable.
+
+Anti-halusinasi di level output: BOCOR di 3 titik.
+1) Token internal lolos (P0-1).
+2) Collision author-year tanpa disambiguasi (P0-2) - sitasi ambigu
+   = hilangnya traceability.
+3) Metadata tidak lengkap tampil seolah sitasi sah
+   ("(Laporan, n.d.)" dari slug judul) - pembaca tidak diberi tahu
+   sumbernya gapan (P1-2).
+
+Audit trail: append-only JSONL + report per tahap + raw preservation +
+telemetry routing. Untuk pemakaian pribadi: cukup untuk rekonstruksi
+manual; tambahan citation sidecar (lihat Q15) membuatnya sangat kuat.
+
+Etika topik sensitif (remaja): TIDAK ADA - lihat Q16.
+
+===============================================================================
+10. EVALUASI LOCALHOST MONITOR
+===============================================================================
+
+Berfungsi:
+- GET /, /api/progress, /api/check, /api/plan.
+- POST /api/run-academic (happy path).
+- Progress persisten (JSONL).
+- Dashboard menarik; launcher PS1 dengan port-check.
+
+Tidak berfungsi/berisiko:
+- Dashboard 8 node menampilkan status tahap yang tidak pernah
+  direkam - pantulan visual, bukan rekaman. Record hanya 3 event.
+- POST path-invalid -> koneksi putus tanpa JSON (P1-3).
+- CORS * tanpa auth (P1-4).
+- CLI run-academic tidak merekam progress sama sekali - monitor buta
+  terhadap sesi CLI.
+- Tidak ada /api/history atau filter - hanya last 100 events.
+- Tidak ada graceful shutdown / port-in-use handling yang informatif.
+
+Rekomendasi minimal: record_progress di tiap stage orchestrator
+(synthesis/outline/writing/audits/docx) - +/- 8 baris; try/except POST;
+CORS same-origin. Setelah itu dashboard baru jujur.
+
+===============================================================================
+11. EVALUASI PLUGIN/SKILL
+===============================================================================
+
+SKILL.md: jelas, kompatibel Kiro, rules konsisten dengan AGENTS.md.
+references/input-json.md ada. Zip dist ada tapi akan stale.
+
+Kekurangan sebagai produk orang awam:
+1) Tidak ada command init/example yang menghasilkan template
+   input.json valid.
+2) Skema strict membuat trial-and-error menyakitkan.
+3) Tidak ada penjelasan kesalahan umum di skill (workspace tidak ada
+   -> ProjectError hanya di log).
+4) Zip ter-track git (P2-2).
+
+Verdict: cukup untuk kamu sendiri + AI agent; belum cukup untuk orang
+awam sungguhan tanpa template generator (P2-3) dan error yang ramah.
+
+===============================================================================
+12. EVALUASI KESIAPAN MULTI-DEVICE PRIBADI
+===============================================================================
+
+Git clone -> jalan         : GAGAL - harus rename "DATA BASE" (P0-3)
+Dependency                 : OK - pip install -r requirements.txt cukup
+Path portability (runtime) : OK - env override + discovery dinamis
+Path portability (data)    : WARN - projects di luar repo (TUGAS x)
+                             tidak ikut clone; backup manual per laptop
+Config per-laptop          : OK - system.local.yaml + .env di-gitignore
+Database/cache/log         : OK - di-gitignore, auto-created
+Test di lokasi baru        : WARN - 2 test butuh TUGAS 1 (P2-1)
+Launcher                   : OK - .bat/.ps1 bekerja; WARN - tidak ada
+                             setup.bat untuk venv
+
+Kebutuhan nyata: dokumen "cara setup laptop baru" 5 langkah + P0-3
+diperbaiki = multi-device nyaman. Data project (TUGAS x) perlu strategi
+sync (folder share/OneDrive/git terpisah) - sekarang tidak ada.
+
+===============================================================================
+13. REKOMENDASI PERBAIKAN (BERTAHAP)
+===============================================================================
+
+TAHAP 1 - WAJIB (P0, +/- 1 hari kerja)
+  1. Token internal gate di CitationAuditAgent + test.     (P0-1)
+  2. Unifikasi citation key (disambiguasi in-text + audit)
+     + test collision.                                     (P0-2)
+  3. README quick-start: git clone ... "DATA BASE" +
+     error message yang menyarankan solusi.                (P0-3)
+  4. setup.bat (venv + pip install) + perbaiki 2 test_paths
+     agar tidak butuh TUGAS 1 fisik.                       (P2-1 ikut)
+
+TAHAP 2 - PENTING (P1, +/- 2-4 hari)
+  5. "python -m src research" pipeline: Discovery ->
+     Verification -> Retrieval -> Evidence ->
+     ClaimVerification -> Academic.                        (P1-1)
+  6. Marker [sumber belum lengkap] di writer & ref list.   (P1-2)
+  7. Monitor: try/except + validasi path + CORS
+     same-origin + optional token.                         (P1-3/4)
+  8. Crossref lookup_by_doi 404 -> None.                   (P1-5)
+
+TAHAP 3 - MULTI-MODEL (P1-6, +/- 2-5 hari)
+  9. Adapter Gemini (REST, api_key_env GEMINI_API_KEY),
+     capability_map di config, retry/timeout bermartabat,
+     test dengan fake transport. Setelah jalan: sambungkan
+     paraphrase & narrative synthesis (fase 16).
+
+TAHAP 4 - KUALITAS AKADEMIK (P2)
+  10. Citation sidecar (key->source_id mapping).
+  11. Mode detection diperbaiki.
+  12. Minimum payload validation.
+  13. Encoding normalisasi non-ASCII.
+  14. Sinkronisasi status tools config vs adapter.
+  15. record_progress di tiap stage.
+
+TAHAP 5 - OPSIONAL
+  16. GitHub Actions (Windows+Ubuntu) untuk check+pytest.
+  17. Template input.json generator (python -m src init).
+  18. Untrack dist/.
+  19. Safeguard topik sensitif (remaja) -> force human review.
+  20. Rotasi progress.jsonl.
+
+===============================================================================
+14. ROADMAP LANJUTAN
+===============================================================================
+
+Minggu ini : Tahap 1 penuh -> project trustworthy by default untuk
+             penggunaan pribadi.
+2 minggu   : Tahap 2 -> klaim "mencari sumber" jadi nyata; monitor jujur.
+Bulan depan: Tahap 3 (Gemini) -> narrative writing hidup; fase 16-18
+             substansial.
+Setelahnya : Tahap 4-5 sesuai selera; mulai GitHub Actions sejak
+             Tahap 1 selesai (mencegah regresi).
+
+===============================================================================
+15. KESIMPULAN AKHIR
+===============================================================================
+
+Apakah project ini sudah nyaman dipakai pribadi di beberapa laptop?
+
+BELUM - TAPI JARAKNYA DEKAT DAN JELAS.
+
+- Untuk kamu sendiri, di laptop utama, hari ini: YA, bisa dipakai -
+  dengan dua syarat disiplin: folder bernama "DATA BASE", dan
+  PROOFREAD MANUAL draft final untuk token internal/sitasi ganda
+  (karena gate-nya belum ada).
+- Untuk laptop kedua: BELUM, sampai P0-3 dibereskan (5 menit perbaikan
+  README + 1 baris error message; plus rename folder saat clone).
+- Untuk mempercayai output tanpa membaca: BELUM - P0-1 dan P0-2 harus
+  turun dulu.
+
+Nilai terbesar project ini justru pada bagian yang tidak terlihat user:
+evidence registry, verification engine, storage safety, dan kejujuran
+status integrasi. Ancaman terbesar bagi kredibilitasnya adalah gap
+antara dokumentasi (yang menjanjikan gate) dan kode (yang belum
+menjaga). Tutup gap itu dengan Tahap 1, dan klaim-klaim utamamu mulai
+benar secara teknis - bukan hanya secara niat.
+
+===============================================================================
+LAMPIRAN LOKASI BUKTI
+===============================================================================
+- Sandbox uji   : VIBE CODING\TUGAS AUDIT_SANDBOX\
+                  (draft & audit JSON skenario A-F)
+- Fixture       : DATA BASE\state\audit_sandbox\
+- Log monitor   : DATA BASE\state\progress.jsonl
+- Laporan asli  : DATA BASE\docs\AUDIT_KESELURUHAN_2026-09-07.md
+Keduanya aman dihapus setelah laporan ini dibaca.
+===============================================================================

@@ -5,10 +5,14 @@ from __future__ import annotations
 from pydantic import Field
 
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
-from src.core.storage import write_json
+from src.core.storage import backup_file, write_json
 from src.schemas.claim import Claim
 from src.schemas.project import Project, ProjectArtifact
-from src.tools.citation_manager import detect_orphan_citations
+from src.tools.citation_manager import (
+    detect_internal_tokens,
+    detect_orphan_author_year_citations,
+    detect_orphan_citations,
+)
 from src.tools.reference_formatter import citation_key_for
 from src.schemas.source import Source
 
@@ -31,6 +35,8 @@ class CitationAuditRequest(AgentRequest):
 class CitationAuditResponse(AgentResponse):
     passed: bool = False
     orphan_citations: list[str] = Field(default_factory=list)
+    internal_tokens: list[str] = Field(default_factory=list)
+    author_year_orphans: list[str] = Field(default_factory=list)
     audit_path: str | None = None
 
 
@@ -43,10 +49,28 @@ class CitationAuditAgent(BaseAgent[CitationAuditRequest, CitationAuditResponse])
     def _execute(self, request: CitationAuditRequest) -> CitationAuditResponse:
         known = {citation_key_for(source) for source in request.sources}
         orphan = detect_orphan_citations(request.draft, known)
-        payload = {"passed": not orphan, "orphan_citations": orphan}
+        # Audit the citation forms the writer actually emits (audit A02):
+        # internal ChatGPT/file tokens and author-year citations whose source
+        # is missing from the reference data. Both categories block the audit.
+        tokens = detect_internal_tokens(request.draft)
+        year_orphans = detect_orphan_author_year_citations(request.draft, request.sources)
+        passed = not orphan and not tokens and not year_orphans
+        payload = {
+            "passed": passed,
+            "orphan_citations": orphan,
+            "internal_tokens": tokens,
+            "author_year_orphans": year_orphans,
+        }
         path = request.project.artifact_path(ProjectArtifact.CITATION_AUDIT)
+        backup_file(path, root=request.project.directory)
         write_json(path, payload, root=request.project.directory, overwrite=True)
-        return CitationAuditResponse(passed=not orphan, orphan_citations=orphan, audit_path=str(path))
+        return CitationAuditResponse(
+            passed=passed,
+            orphan_citations=orphan,
+            internal_tokens=tokens,
+            author_year_orphans=year_orphans,
+            audit_path=str(path),
+        )
 
 
 class FactAuditRequest(AgentRequest):

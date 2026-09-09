@@ -44,6 +44,9 @@ TRANSIENT_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
 
 #: Upper bound for the preserved raw body (kept truncated, never unlimited).
 _MAX_RAW_TEXT = 200_000
+#: Hard cap on bytes read from the network (audit A12): reading is bounded,
+#: and exceeding it is reported instead of silently corrupting the payload.
+_MAX_BODY_BYTES = 10 * 1024 * 1024
 
 #: Maximum number of retry attempts per request (initial call + retries).
 _MAX_ATTEMPTS = 5
@@ -64,7 +67,11 @@ class HttpResult:
     url: str
     status: int
     headers: Mapping[str, str]
+    #: Full decoded body used for parsing (audit A12): never truncated, so a
+    #: valid JSON payload below the read cap always parses correctly.
     text: str
+    #: Short excerpt for logs/audit display; parsing never uses this.
+    excerpt: str = ""
     truncated: bool = False
     elapsed_seconds: float = 0.0
 
@@ -179,17 +186,27 @@ class HttpClient:
         started = time.monotonic()
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                raw = response.read()
+                # Bounded read (audit A12): cap what we accept from the
+                # network, but never truncate *within* the cap — a payload
+                # that fits must parse whole.
+                raw = response.read(_MAX_BODY_BYTES + 1)
         except urllib.error.HTTPError:
             # Re-raised for the caller's retry/error handling to inspect .code.
             raise
         elapsed = time.monotonic() - started
 
         status = getattr(response, "status", getattr(response, "code", 200))
+        if len(raw) > _MAX_BODY_BYTES:
+            raise IntegrationError(
+                f"Response body from {url} exceeds the {_MAX_BODY_BYTES} byte read cap",
+                error_code="RESPONSE_TOO_LARGE",
+                url=url,
+                status=int(status),
+            )
         body = raw.decode("utf-8", errors="replace")
+        # The excerpt is display-only; the parse body stays whole.
+        excerpt = body[:_MAX_RAW_TEXT]
         truncated = len(body) > _MAX_RAW_TEXT
-        if truncated:
-            body = body[:_MAX_RAW_TEXT]
 
         response_headers: dict[str, str] = {
             str(k): str(v) for k, v in dict(response.headers).items()
@@ -199,6 +216,7 @@ class HttpClient:
             status=int(status),
             headers=response_headers,
             text=body,
+            excerpt=excerpt,
             truncated=truncated,
             elapsed_seconds=elapsed,
         )

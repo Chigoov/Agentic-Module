@@ -26,7 +26,7 @@ class _FakeResponse:
         self._body = body
         self.headers = headers or {}
 
-    def read(self) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         return self._body
 
     def __enter__(self) -> "_FakeResponse":
