@@ -1,0 +1,176 @@
+{
+  "project": {
+    "schema_version": "1.0",
+    "name": "edjust-mini",
+    "workspace": "TUGAS 1",
+    "path": "c:\\Users\\HYPE AMD\\Downloads\\VIBE CODING\\AUTONOMI AGENTIC ILMIAH\\TUGAS 1\\edjust-mini",
+    "title": "Edjust: Edukasi Hukum dan Dukungan Sosial bagi Remaja Pasca-Perceraian Orang Tua",
+    "citation_style": "APA7",
+    "language": "id"
+  },
+  "sources": [
+    {
+      "id": "src_amato_2000",
+      "schema_version": "1.0",
+      "title": "The Consequences of Divorce for Adults and Children",
+      "authors": [
+        "Amato, P. R."
+      ],
+      "year": 2000,
+      "venue": "Journal of Marriage and Family",
+      "doi": "10.1111/j.1741-3737.2000.01269.x",
+      "url": "https://doi.org/10.1111/j.1741-3737.2000.01269.x",
+      "source_type": "JOURNAL_ARTICLE",
+      "state": "APPROVED"
+    },
+    {
+      "id": "src_pedro_carroll_2005",
+      "schema_version": "1.0",
+      "title": "Fostering resilience in the aftermath of divorce: The role of evidence-based programs for children",
+      "authors": [
+        "Pedro-Carroll, J. L."
+      ],
+      "year": 2005,
+      "venue": "Family Court Review",
+      "doi": "10.1111/j.1744-1617.2005.00007.x",
+      "url": "https://doi.org/10.1111/j.1744-1617.2005.00007.x",
+      "source_type": "JOURNAL_ARTICLE",
+      "state": "APPROVED"
+    },
+    {
+      "id": "src_mcintosh_2000",
+      "schema_version": "1.0",
+      "title": "Child-inclusive divorce mediation: Report on a qualitative research study",
+      "authors": [
+        "McIntosh, J."
+      ],
+      "year": 2000,
+      "venue": "Mediation Quarterly",
+      "doi": "10.1002/crq.3890180106",
+      "url": "https://doi.org/10.1002/crq.3890180106",
+      "source_type": "JOURNAL_ARTICLE",
+      "state": "APPROVED"
+    }
+  ],
+  "claims": [
+    {
+      "id": "clm_divorce_stress",
+      "schema_version": "1.0",
+      "claim_text": "Perceraian orang tua berpotensi menimbulkan distres dan beban penyesuaian bagi anak, namun dampaknya bervariasi tergantung pada ketersediaan faktor protektif dan kemampuan adaptasi individu.",
+      "importance": 3,
+      "status": "SUPPORTED",
+      "support_level": "STRONG",
+      "supporting_sources": [
+        "src_amato_2000"
+      ],
+      "supporting_evidence": [
+        "evd_amato_2000"
+      ],
+      "required_source_count": 1
+    },
+    {
+      "id": "clm_social_support_program",
+      "schema_version": "1.0",
+      "claim_text": "Intervensi preventif berbasis bukti dan kelompok dukungan sosial berfokus anak berkontribusi positif dalam memperkuat resiliensi serta mengurangi risiko kecemasan pasca-perceraian.",
+      "importance": 3,
+      "status": "SUPPORTED",
+      "support_level": "STRONG",
+      "supporting_sources": [
+        "src_pedro_carroll_2005"
+      ],
+      "supporting_evidence": [
+        "evd_pedro_carroll_2005"
+      ],
+      "required_source_count": 1
+    },
+    {
+      "id": "clm_legal_inclusion",
+      "schema_version": "1.0",
+      "claim_text": "Pemberian edukasi hukum dan pelibatan perspektif anak yang ramah usia membantu remaja memahami proses transisi keluarga secara aman tanpa terbebani oleh konflik orang tua.",
+      "importance": 3,
+      "status": "SUPPORTED",
+      "support_level": "STRONG",
+      "supporting_sources": [
+        "src_mcintosh_2000"
+      ],
+      "supporting_evidence": [
+        "evd_mcintosh_2000"
+      ],
+      "required_source_count": 1
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evd_amato_2000",
+      "schema_version": "1.0",
+      "claim_id": "clm_divorce_stress",
+      "source_id": "src_amato_2000",
+      "evidence_text": "Penelitian empiris menunjukkan bahwa dampak perceraian terhadap kesejahteraan anak bervariasi secara substansial, di mana faktor moderasi dan sumber daya penanganan masalah berperan penting dalam adaptasi.",
+      "relationship": "supports",
+      "extraction_method": "MODEL_PARAPHRASE",
+      "verbatim": false,
+      "quote_verified": false,
+      "location": {
+        "locator": "abstract"
+      }
+    },
+    {
+      "id": "evd_pedro_carroll_2005",
+      "schema_version": "1.0",
+      "claim_id": "clm_social_support_program",
+      "source_id": "src_pedro_carroll_2005",
+      "evidence_text": "Evaluasi program preventif seperti Children of Divorce Intervention Program membuktikan adanya penurunan kecemasan dan masalah perilaku serta peningkatan penyesuaian yang sehat di rumah dan sekolah.",
+      "relationship": "supports",
+      "extraction_method": "MODEL_PARAPHRASE",
+      "verbatim": false,
+      "quote_verified": false,
+      "location": {
+        "locator": "abstract"
+      }
+    },
+    {
+      "id": "evd_mcintosh_2000",
+      "schema_version": "1.0",
+      "claim_id": "clm_legal_inclusion",
+      "source_id": "src_mcintosh_2000",
+      "evidence_text": "Model mediasi yang inklusif terhadap anak memfasilitasi pertimbangan kebutuhan unik anak dalam pemisahan orang tua dan memberikan dampak positif bagi penyesuaian anak dan orang tua.",
+      "relationship": "supports",
+      "extraction_method": "MODEL_PARAPHRASE",
+      "verbatim": false,
+      "quote_verified": false,
+      "location": {
+        "locator": "abstract"
+      }
+    }
+  ],
+  "outline": {
+    "schema_version": "1.0",
+    "title": "Edjust: Kerangka Edukasi Hukum dan Dukungan Sosial bagi Remaja Pasca-Perceraian",
+    "sections": [
+      {
+        "schema_version": "1.0",
+        "title": "Tantangan Penyesuaian Remaja Pasca-Perceraian",
+        "level": 1,
+        "claim_ids": [
+          "clm_divorce_stress"
+        ]
+      },
+      {
+        "schema_version": "1.0",
+        "title": "Dukungan Sosial Preventif untuk Resiliensi Remaja",
+        "level": 1,
+        "claim_ids": [
+          "clm_social_support_program"
+        ]
+      },
+      {
+        "schema_version": "1.0",
+        "title": "Edukasi Hukum Ramah Anak dalam Inisiatif Edjust",
+        "level": 1,
+        "claim_ids": [
+          "clm_legal_inclusion"
+        ]
+      }
+    ]
+  }
+}

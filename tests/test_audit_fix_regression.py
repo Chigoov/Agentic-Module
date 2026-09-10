@@ -600,3 +600,48 @@ def test_docx_has_single_references_heading(tmp_path: Path) -> None:
 
     text = "\n".join(p.text for p in Document(response.docx_path).paragraphs)
     assert text.count("References") == 1, "bibliography heading must appear exactly once"
+
+
+def test_terminal_punctuation_placed_after_in_text_citation(tmp_path: Path) -> None:
+    """Edjust mini finding (2026-09-10): when claim_text ends with a period,
+    the period must follow the in-text citation, e.g. '... adaptasi individu (Amato, 2000).'
+    rather than '... adaptasi individu. (Amato, 2000)'."""
+    from src.agents.writer import WriterAgent, WriterRequest
+
+    project = _project(tmp_path)
+    source = Source(
+        title="The Consequences of Divorce for Adults and Children",
+        authors=["Amato, P. R."],
+        year=2000,
+        state=SourceState.APPROVED,
+    )
+    claim = Claim(
+        claim_text="Dampak perceraian sangat bervariasi.",
+        supporting_sources=[source.id],
+        supporting_evidence=["evd_1"],
+        status=ClaimStatus.SUPPORTED,
+        support_level=SupportLevel.STRONG,
+    )
+    evidence = Evidence(
+        id="evd_1",
+        claim_id=claim.id,
+        source_id=source.id,
+        evidence_text="Dampak perceraian sangat bervariasi.",
+        location=EvidenceLocation(locator="abstract"),
+    )
+    outline = Outline(
+        title="Uji Sitasi",
+        sections=[OutlineSection(title="Bagian", claim_ids=[claim.id])],
+    )
+    response = WriterAgent().execute(
+        WriterRequest(
+            project=project,
+            outline=outline,
+            claims=[claim],
+            evidence=[evidence],
+            sources=[source],
+        )
+    )
+    assert response.success
+    assert "Dampak perceraian sangat bervariasi (Amato, 2000)." in response.draft
+    assert "Dampak perceraian sangat bervariasi. (Amato, 2000)" not in response.draft

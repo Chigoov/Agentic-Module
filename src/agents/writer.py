@@ -177,10 +177,17 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             if claim is None:
                 continue
             statement = claim.claim_text
+            citations = WriterAgent._citations_for(claim, evidence_by_claim, source_by_id)
+            has_dot = statement.endswith(".")
+            if has_dot and citations:
+                statement = statement[:-1]
             if claim.qualifier:
                 statement = f"{statement} ({claim.qualifier})"
-            citations = WriterAgent._citations_for(claim, evidence_by_claim, source_by_id)
-            lines.append(f"{statement}{citations}")
+            if citations:
+                statement = f"{statement}{citations}"
+                if has_dot:
+                    statement = f"{statement}."
+            lines.append(statement)
             lines.append("")
             for evidence in evidence_by_claim.get(claim.id, []):
                 if not evidence.is_citable_quotation:
