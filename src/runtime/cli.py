@@ -87,6 +87,8 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
             sources=sources,
             outline=outline,
             generate_docx=not args.no_docx,
+            command="run-academic",
+            input_path=args.input_json,
         )
     )
     print(_json(response.model_dump(mode="json")))
