@@ -222,3 +222,41 @@ def test_audit_trail_sanitizes_monitor_token_and_secrets(tmp_path: Path, monkeyp
         assert secret_token not in text, f"Secret leaked in {json_file.name}!"
         if json_file.name == "input_snapshot.json":
             assert "[REDACTED]" in text
+
+
+def test_cli_cmd_runs_lists_and_inspects(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import argparse
+    from src.runtime.cli import _cmd_runs
+
+    project = _project(tmp_path)
+    claim, evidence, source, outline = _valid_bundle()
+
+    request = AcademicWritingRequest(
+        project=project,
+        claims=[claim],
+        evidence=[evidence],
+        sources=[source],
+        outline=outline,
+    )
+    response = AcademicWritingWorkflow().execute(request)
+    assert response.success is True
+
+    # 1. Test listing runs
+    args_list = argparse.Namespace(project=str(project.directory), input_json=None, run_id=None)
+    rc = _cmd_runs(args_list)
+    assert rc == 0
+    captured = capsys.readouterr().out
+    data = json.loads(captured)
+    assert data["success"] is True
+    assert data["total_runs"] == 1
+    assert data["runs"][0]["run_id"] == response.run_id
+
+    # 2. Test inspecting specific run
+    args_inspect = argparse.Namespace(project=str(project.directory), input_json=None, run_id=response.run_id)
+    rc_inspect = _cmd_runs(args_inspect)
+    assert rc_inspect == 0
+    captured_inspect = capsys.readouterr().out
+    data_inspect = json.loads(captured_inspect)
+    assert data_inspect["success"] is True
+    assert data_inspect["run"]["run_id"] == response.run_id
+    assert data_inspect["run"]["success"] is True

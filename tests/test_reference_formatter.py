@@ -114,3 +114,33 @@ def test_format_reference_list_orders_and_projects() -> None:
     assert reference_list.project_id == "prj_1"
     assert reference_list.style is CitationStyle.APA7
     assert [e.source_id for e in reference_list.entries] == [s.id for s in sources]
+
+
+def test_format_reference_with_volume_issue_pages() -> None:
+    source = _source(
+        title="The Consequences of Divorce for Adults and Children",
+        authors=["Amato, P. R."],
+        year=2000,
+        venue="Journal of Marriage and Family",
+        volume=62,
+        issue=4,
+        pages="1269–1287",
+        doi="10.1111/j.1741-3737.2000.01269.x",
+    )
+    entry = format_reference(source)
+    assert "Journal of Marriage and Family, 62(4), 1269–1287." in entry.formatted
+    assert entry.missing_fields == []
+
+
+def test_format_reference_with_volume_and_pages() -> None:
+    source = _source(
+        title="Sample Article",
+        authors=["Lee, K."],
+        year=2021,
+        venue="Science",
+        volume="15",
+        pages="100-105",
+        url="https://example.org",
+    )
+    entry = format_reference(source)
+    assert "Science, 15, 100-105." in entry.formatted

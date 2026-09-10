@@ -95,6 +95,76 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
     return 0 if response.success else 1
 
 
+def _cmd_runs(args: argparse.Namespace) -> int:
+    target_path: Path | None = None
+    if args.input_json:
+        try:
+            payload = _read_json(args.input_json)
+            raw_path = payload.get("project", {}).get("path") or payload.get("project_path") or ""
+            if raw_path:
+                target_path = Path(raw_path).resolve()
+        except Exception:
+            pass
+    elif args.project:
+        target_path = Path(args.project).resolve()
+
+    if target_path is None or not target_path.exists():
+        from src.core.paths import get_paths
+
+        try:
+            ws_root = get_paths().workspace_root
+            candidate_runs = list(ws_root.glob("**/runs"))
+            if candidate_runs:
+                target_path = candidate_runs[0].parent
+        except Exception:
+            pass
+
+    if target_path is None or not target_path.exists():
+        print(_json({"success": False, "error": "Project directory with runs/ not found"}), file=sys.stderr)
+        return 1
+
+    runs_dir = target_path / "runs" if target_path.name != "runs" else target_path
+    if not runs_dir.exists():
+        print(_json({"success": True, "project_directory": str(target_path), "total_runs": 0, "runs": []}))
+        return 0
+
+    run_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
+
+    if args.run_id:
+        target_run = next((d for d in run_dirs if d.name == args.run_id or d.name.endswith(args.run_id)), None)
+        if not target_run:
+            print(_json({"success": False, "error": f"Run {args.run_id} not found"}), file=sys.stderr)
+            return 1
+        summary_file = target_run / "run_summary.json"
+        if not summary_file.exists():
+            print(_json({"success": False, "error": f"Run summary not found in {target_run}"}), file=sys.stderr)
+            return 1
+        summary = json.loads(summary_file.read_text(encoding="utf-8"))
+        print(_json({"success": True, "run": summary}))
+        return 0
+
+    summaries: list[dict[str, Any]] = []
+    for d in run_dirs:
+        summary_file = d / "run_summary.json"
+        if summary_file.exists():
+            try:
+                data = json.loads(summary_file.read_text(encoding="utf-8"))
+                summaries.append(data)
+            except Exception:
+                summaries.append({"run_id": d.name, "success": False, "error_message": "Corrupted summary"})
+        else:
+            summaries.append({"run_id": d.name, "success": False, "error_message": "Missing summary"})
+
+    summaries.sort(key=lambda x: str(x.get("started_at") or x.get("run_id") or ""), reverse=True)
+    print(_json({
+        "success": True,
+        "project_directory": str(target_path),
+        "total_runs": len(summaries),
+        "runs": summaries,
+    }))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AUTONOMI AGENTIC ILMIAH CLI")
     sub = parser.add_subparsers(dest="command")
@@ -117,6 +187,12 @@ def build_parser() -> argparse.ArgumentParser:
     monitor.add_argument("--host", default="127.0.0.1")
     monitor.add_argument("--port", type=int, default=8000)
     monitor.set_defaults(func=lambda args: serve(args.host, args.port) or 0)
+
+    runs = sub.add_parser("runs", help="Inspect per-run audit trails for an academic project")
+    runs.add_argument("project", nargs="?", default="", help="Project directory path")
+    runs.add_argument("--input-json", help="Input JSON file describing the project")
+    runs.add_argument("--run-id", help="Inspect a specific run ID")
+    runs.set_defaults(func=_cmd_runs)
 
     parser.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
     return parser

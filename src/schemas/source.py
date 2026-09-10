@@ -95,6 +95,12 @@ class Source(BaseRecord):
         Publication year (integer or None for undated works).
     venue:
         Journal, conference, publisher, or None.
+    volume:
+        Volume number (integer or string) when available.
+    issue:
+        Issue / number (integer or string) when available.
+    pages:
+        Page range string, e.g. "1269–1287" or "52-64".
     doi:
         DOI (never invented; AGENT_CONSTITUTION.md §2).
     url:
@@ -121,6 +127,9 @@ class Source(BaseRecord):
     authors: list[str] = Field(default_factory=list)
     year: int | None = None
     venue: str | None = None
+    volume: int | str | None = None
+    issue: int | str | None = None
+    pages: str | None = None
     doi: str | None = None
     url: str | None = None
     abstract: str | None = None

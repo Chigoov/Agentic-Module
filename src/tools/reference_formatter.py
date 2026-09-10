@@ -153,6 +153,19 @@ def format_reference(source: Source, style: CitationStyle = CitationStyle.APA7) 
 
     if source.venue:
         venue_str = source.venue
+        vol_part = ""
+        if source.volume is not None:
+            if source.issue is not None:
+                vol_part = f"{source.volume}({source.issue})"
+            else:
+                vol_part = f"{source.volume}"
+
+        if vol_part and source.pages:
+            venue_str = f"{source.venue}, {vol_part}, {source.pages}"
+        elif vol_part:
+            venue_str = f"{source.venue}, {vol_part}"
+        elif source.pages:
+            venue_str = f"{source.venue}, {source.pages}"
     else:
         venue_str = "[missing: venue]"
         missing.append("venue")
