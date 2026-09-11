@@ -19,6 +19,7 @@ python -m src plan "topik riset"
 python -m src run-academic --input-json input.json
 python -m src runs --input-json input.json
 python -m src runs --input-json input.json --prune --keep 20
+python -m src export-bundle --input-json input.json
 python -m src monitor --port 8000
 ```
 
@@ -59,6 +60,7 @@ Setiap kali `run-academic` dieksekusi, sistem menyimpan snapshot input, klaim, e
 - Melihat riwayat run: `python -m src runs --input-json input.json`
 - Melihat detail run tertentu: `python -m src runs --input-json input.json --run-id <run_id>`
 - Memangkas run lama (retensi): `python -m src runs --input-json input.json --prune --keep 20`
+- Mengemas output dan audit trail ke `.zip`: `python -m src export-bundle --input-json input.json` (menghasilkan `exports/bundle_<run_id>.zip`)
 
 > **Peringatan Integritas:** Output naskah final yang dihasilkan oleh workflow otomatis harus tetap ditelaah dan diverifikasi secara kritis oleh manusia sebelum diserahkan atau dipublikasikan.
 

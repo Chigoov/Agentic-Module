@@ -97,9 +97,12 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
     return 0 if response.success else 1
 
 
-def _cmd_runs(args: argparse.Namespace) -> int:
+def _resolve_project_dir(args: argparse.Namespace) -> Path | None:
     target_path: Path | None = None
-    if args.input_json:
+    explicitly_specified = False
+
+    if getattr(args, "input_json", None):
+        explicitly_specified = True
         try:
             payload = _read_json(args.input_json)
             raw_path = payload.get("project", {}).get("path") or payload.get("project_path") or ""
@@ -107,10 +110,13 @@ def _cmd_runs(args: argparse.Namespace) -> int:
                 target_path = Path(raw_path).resolve()
         except Exception:
             pass
-    elif args.project:
-        target_path = Path(args.project).resolve()
+    elif getattr(args, "project_flag", None) or getattr(args, "project", None):
+        proj_str = getattr(args, "project_flag", None) or getattr(args, "project", "")
+        if proj_str:
+            explicitly_specified = True
+            target_path = Path(proj_str).resolve()
 
-    if target_path is None or not target_path.exists():
+    if not explicitly_specified and (target_path is None or not target_path.exists()):
         try:
             ws_root = get_paths().workspace_root
             candidate_runs = list(ws_root.glob("**/runs"))
@@ -119,6 +125,11 @@ def _cmd_runs(args: argparse.Namespace) -> int:
         except Exception:
             pass
 
+    return target_path
+
+
+def _cmd_runs(args: argparse.Namespace) -> int:
+    target_path = _resolve_project_dir(args)
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory with runs/ not found"}), file=sys.stderr)
         return 1
@@ -234,6 +245,26 @@ def _cmd_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export_bundle(args: argparse.Namespace) -> int:
+    target_path = _resolve_project_dir(args)
+    if target_path is None or not target_path.exists():
+        print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
+        return 1
+
+    from src.workflows.export_bundle import export_bundle
+
+    result = export_bundle(
+        target_path,
+        run_id=args.run_id,
+        include_failed=getattr(args, "include_failed", False),
+    )
+    if not result.get("success", False):
+        print(_json(result), file=sys.stderr)
+        return 1
+    print(_json(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AUTONOMI AGENTIC ILMIAH CLI")
     sub = parser.add_subparsers(dest="command")
@@ -259,11 +290,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     runs = sub.add_parser("runs", help="Inspect per-run audit trails for an academic project")
     runs.add_argument("project", nargs="?", default="", help="Project directory path")
+    runs.add_argument("--project", dest="project_flag", help="Project directory path flag")
     runs.add_argument("--input-json", help="Input JSON file describing the project")
     runs.add_argument("--run-id", help="Inspect a specific run ID")
     runs.add_argument("--prune", action="store_true", help="Prune older runs keeping only N newest runs")
     runs.add_argument("--keep", type=int, default=None, help="Number of newest runs to keep when pruning (must be > 0)")
     runs.set_defaults(func=_cmd_runs)
+
+    export_bundle = sub.add_parser("export-bundle", help="Export an academic run into a portable .zip archive")
+    export_bundle.add_argument("project", nargs="?", default="", help="Project directory path")
+    export_bundle.add_argument("--project", dest="project_flag", help="Project directory path flag")
+    export_bundle.add_argument("--input-json", help="Input JSON file describing the project")
+    export_bundle.add_argument("--run-id", help="Target run ID to export (defaults to latest run)")
+    export_bundle.add_argument("--include-failed", action="store_true", help="Allow bundling a failed run (snapshots only)")
+    export_bundle.set_defaults(func=_cmd_export_bundle)
 
     parser.add_argument("--check", action="store_true", help=argparse.SUPPRESS)
     return parser

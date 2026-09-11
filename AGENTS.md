@@ -35,6 +35,13 @@ Prune older runs, keeping the N newest runs:
 python -m src runs --input-json path\to\input.json --prune --keep 20
 ```
 
+Export academic output bundle as .zip:
+
+```powershell
+python -m src export-bundle --input-json path\to\input.json
+python -m src export-bundle --input-json path\to\input.json --run-id <run_id>
+```
+
 ## Rules
 
 - Do not invent sources, DOI, quotes, page numbers, or evidence.

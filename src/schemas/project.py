@@ -55,7 +55,7 @@ class ProjectArtifact(StrEnum):
 PROJECT_ARTIFACTS: tuple[ProjectArtifact, ...] = tuple(ProjectArtifact)
 
 #: Subdirectories created inside a project folder.
-PROJECT_SUBDIRS: tuple[str, ...] = ("source_documents", "runs")
+PROJECT_SUBDIRS: tuple[str, ...] = ("source_documents", "runs", "exports")
 
 
 class Project(BaseRecord):
