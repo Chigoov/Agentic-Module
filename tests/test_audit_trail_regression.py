@@ -260,3 +260,118 @@ def test_cli_cmd_runs_lists_and_inspects(tmp_path: Path, capsys: pytest.CaptureF
     assert data_inspect["success"] is True
     assert data_inspect["run"]["run_id"] == response.run_id
     assert data_inspect["run"]["success"] is True
+
+
+def test_audit_trail_portable_relpaths(tmp_path: Path) -> None:
+    """R4: run_summary.json must provide portable relpaths relative to project.directory."""
+    project = _project(tmp_path)
+    claim, evidence, source, outline = _valid_bundle()
+
+    request = AcademicWritingRequest(
+        project=project,
+        claims=[claim],
+        evidence=[evidence],
+        sources=[source],
+        outline=outline,
+    )
+    response = AcademicWritingWorkflow().execute(request)
+    assert response.success is True
+    run_dir = Path(response.run_dir)
+    summary = json.loads((run_dir / "run_summary.json").read_text(encoding="utf-8"))
+
+    # Both absolute and relpath must be populated
+    assert summary["draft_path"] is not None and Path(summary["draft_path"]).is_absolute()
+    assert summary["docx_path"] is not None and Path(summary["docx_path"]).is_absolute()
+    assert summary["citation_audit_path"] is not None and Path(summary["citation_audit_path"]).is_absolute()
+    assert summary["fact_audit_path"] is not None and Path(summary["fact_audit_path"]).is_absolute()
+
+    assert summary["draft_relpath"] == "draft.md"
+    assert summary["docx_relpath"] == "final.docx"
+    assert summary["citation_audit_relpath"] == "citation_audit.json"
+    assert summary["fact_audit_relpath"] == "fact_audit.json"
+
+
+def test_gate_error_clean_ux_without_unhandled_exception(tmp_path: Path) -> None:
+    """R4: Integrity gate rejection must return clean response without 'unhandled exception'."""
+    project = _project(tmp_path)
+    claim, evidence, source, outline = _valid_bundle()
+    forged_claim = claim.model_copy(update={"supporting_evidence": ["evd_nonexistent"]})
+
+    request = AcademicWritingRequest(
+        project=project,
+        claims=[forged_claim],
+        evidence=[evidence],
+        sources=[source],
+        outline=outline,
+    )
+    response = AcademicWritingWorkflow().execute(request)
+    assert response.success is False
+    assert response.needs_human_review is True
+    assert response.review_prompt is not None
+    assert "unhandled exception" not in (response.error_message or "").lower()
+    assert "integrity gate" in (response.error_message or "").lower()
+
+    # Final document must not exist
+    assert not (project.directory / "final.docx").exists()
+
+    # Audit trail must have run_summary.json with clean error_message
+    run_dir = Path(response.run_dir)
+    summary = json.loads((run_dir / "run_summary.json").read_text(encoding="utf-8"))
+    assert summary["success"] is False
+    assert "unhandled exception" not in (summary["error_message"] or "").lower()
+    assert summary["draft_relpath"] is None
+    assert summary["docx_relpath"] is None
+
+
+def test_cli_runs_prune_behavior(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """R4: Subcommand 'runs --prune --keep N' retention behavior."""
+    import argparse
+    from src.runtime.cli import _cmd_runs
+
+    project_dir = tmp_path / "project_with_runs"
+    runs_dir = project_dir / "runs"
+    runs_dir.mkdir(parents=True)
+
+    # Create 5 dummy run directories with timestamps
+    created_runs = []
+    for i in range(1, 6):
+        run_id = f"run_20260901T00000{i}Z_0000000{i}"
+        d = runs_dir / run_id
+        d.mkdir()
+        summary = {
+            "run_id": run_id,
+            "started_at": f"2026-09-01T00:00:0{i}.000000+00:00",
+            "success": True,
+        }
+        (d / "run_summary.json").write_text(json.dumps(summary), encoding="utf-8")
+        created_runs.append(run_id)
+
+    # 1. Without --prune, nothing is deleted (even if --keep is passed)
+    args_no_prune = argparse.Namespace(project=str(project_dir), input_json=None, run_id=None, prune=False, keep=2)
+    rc = _cmd_runs(args_no_prune)
+    assert rc == 0
+    assert len(list(runs_dir.iterdir())) == 5
+
+    # 2. With --prune and --keep 0, command is rejected with exit code 1
+    args_keep_zero = argparse.Namespace(project=str(project_dir), input_json=None, run_id=None, prune=True, keep=0)
+    rc_zero = _cmd_runs(args_keep_zero)
+    assert rc_zero == 1
+    err_output = capsys.readouterr().err
+    assert "positive integer" in err_output
+    assert len(list(runs_dir.iterdir())) == 5
+
+    # 3. With --prune and --keep 2, deletes the 3 oldest runs and keeps the 2 newest runs
+    args_prune = argparse.Namespace(project=str(project_dir), input_json=None, run_id=None, prune=True, keep=2)
+    rc_prune = _cmd_runs(args_prune)
+    assert rc_prune == 0
+    captured = capsys.readouterr().out
+    prune_res = json.loads(captured)
+    assert prune_res["success"] is True
+    assert prune_res["total_before"] == 5
+    assert prune_res["kept"] == 2
+    assert prune_res["deleted"] == 3
+    # 3 oldest were run 1, 2, 3
+    assert set(prune_res["deleted_run_ids"]) == {created_runs[0], created_runs[1], created_runs[2]}
+
+    remaining = [d.name for d in runs_dir.iterdir() if d.is_dir()]
+    assert set(remaining) == {created_runs[3], created_runs[4]}

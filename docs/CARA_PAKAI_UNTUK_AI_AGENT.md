@@ -17,6 +17,8 @@ cd "C:\jalan\ke\folder\checkout\anda"
 python -m src check
 python -m src plan "topik riset"
 python -m src run-academic --input-json input.json
+python -m src runs --input-json input.json
+python -m src runs --input-json input.json --prune --keep 20
 python -m src monitor --port 8000
 ```
 
@@ -47,7 +49,18 @@ Panggil endpoint lokal:
    - `stages`
    - `draft_path`
    - `docx_path`
+   - `run_id` dan `run_dir`
 5. Jalankan `check` dan test setelah mengubah code.
+
+## Riwayat Run & Audit Trail
+
+Setiap kali `run-academic` dieksekusi, sistem menyimpan snapshot input, klaim, evidence, dan ringkasan eksekusi di folder `runs/<run_id>/`.
+
+- Melihat riwayat run: `python -m src runs --input-json input.json`
+- Melihat detail run tertentu: `python -m src runs --input-json input.json --run-id <run_id>`
+- Memangkas run lama (retensi): `python -m src runs --input-json input.json --prune --keep 20`
+
+> **Peringatan Integritas:** Output naskah final yang dihasilkan oleh workflow otomatis harus tetap ditelaah dan diverifikasi secara kritis oleh manusia sebelum diserahkan atau dipublikasikan.
 
 ## Batas Aman
 

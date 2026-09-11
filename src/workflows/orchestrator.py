@@ -45,7 +45,12 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
     agent_name = "orchestrator_agent"
 
     def _make_error_response(self, *, error_message: str, **extra: object) -> OrchestratorResponse:
-        return OrchestratorResponse(success=False, error_message=error_message)
+        return OrchestratorResponse(
+            success=False,
+            needs_human_review=bool(extra.get("needs_human_review", False)),
+            review_prompt=extra.get("review_prompt") if isinstance(extra.get("review_prompt"), str) else None,
+            error_message=error_message,
+        )
 
     def _execute(self, request: OrchestratorRequest) -> OrchestratorResponse:
         stages: list[str] = []

@@ -111,6 +111,23 @@ def sanitize_snapshot(data: Any, *, known_secrets: list[str] | None = None) -> A
     return data
 
 
+def _compute_relpath(path_str: str | None, root: Path) -> str | None:
+    """Compute relative path string to project directory, or None if path does not exist."""
+    if not path_str:
+        return None
+    try:
+        p = Path(path_str).resolve()
+        if not p.exists():
+            return None
+        r = root.resolve()
+        try:
+            return p.relative_to(r).as_posix()
+        except ValueError:
+            return p.name
+    except Exception:
+        return None
+
+
 class AcademicRunAudit:
     """Coordinates recording of per-run snapshots and summary."""
 
@@ -294,6 +311,14 @@ class AcademicRunAudit:
             else None
         )
 
+        final_draft_path = resolved_draft if success else None
+        final_docx_path = resolved_docx if success else None
+
+        draft_relpath = _compute_relpath(final_draft_path, self._root)
+        docx_relpath = _compute_relpath(final_docx_path, self._root)
+        citation_audit_relpath = _compute_relpath(citation_audit_path, self._root)
+        fact_audit_relpath = _compute_relpath(fact_audit_path, self._root)
+
         run_summary = {
             "run_id": self.run_id,
             "started_at": self.started_at,
@@ -301,10 +326,14 @@ class AcademicRunAudit:
             "success": success,
             "command": self.command,
             "input_path": self.input_path,
-            "draft_path": resolved_draft if success else None,
-            "docx_path": resolved_docx if success else None,
+            "draft_path": final_draft_path,
+            "draft_relpath": draft_relpath,
+            "docx_path": final_docx_path,
+            "docx_relpath": docx_relpath,
             "citation_audit_path": citation_audit_path,
+            "citation_audit_relpath": citation_audit_relpath,
             "fact_audit_path": fact_audit_path,
+            "fact_audit_relpath": fact_audit_relpath,
             "stages": stages,
             "error_message": error_message,
         }

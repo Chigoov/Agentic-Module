@@ -22,6 +22,7 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
+from src.core.errors import HumanReviewRequired
 from src.core.logging import get_logger
 
 __all__ = [
@@ -99,6 +100,19 @@ class BaseAgent(ABC, Generic[TRequest, TResponse]):
         self._logger.info("Agent invoked", extra={"agent": self.name})
         try:
             response = self._execute(request)
+        except HumanReviewRequired as exc:
+            self._logger.warning(
+                "Agent escalated to human review",
+                extra={"agent": self.name, "issue": exc.issue},
+            )
+            response = self._make_error_response(  # type: ignore[assignment]
+                error_message=str(exc),
+                needs_human_review=True,
+                review_prompt=exc.render(),
+            )
+            response.needs_human_review = True
+            response.review_prompt = exc.render()
+            response.error_message = str(exc)
         except Exception as exc:
             self._logger.error(
                 "Agent raised an unhandled exception",

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
 from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, TaskAnalyzerAgent, TaskAnalyzerRequest
 from src.core.paths import PathResolutionError, get_paths
+from src.core.storage import ensure_within
 from src.runtime.bootstrap import bootstrap, health_check
 from src.runtime.monitor import serve
 from src.schemas.claim import Claim
@@ -109,8 +111,6 @@ def _cmd_runs(args: argparse.Namespace) -> int:
         target_path = Path(args.project).resolve()
 
     if target_path is None or not target_path.exists():
-        from src.core.paths import get_paths
-
         try:
             ws_root = get_paths().workspace_root
             candidate_runs = list(ws_root.glob("**/runs"))
@@ -125,37 +125,106 @@ def _cmd_runs(args: argparse.Namespace) -> int:
 
     runs_dir = target_path / "runs" if target_path.name != "runs" else target_path
     if not runs_dir.exists():
+        if getattr(args, "prune", False):
+            if getattr(args, "keep", None) is None or args.keep <= 0:
+                print(
+                    _json({"success": False, "error": "--keep must be a positive integer when --prune is specified"}),
+                    file=sys.stderr,
+                )
+                return 1
+            print(_json({
+                "success": True,
+                "project_directory": str(target_path),
+                "total_before": 0,
+                "kept": 0,
+                "deleted": 0,
+                "deleted_run_ids": [],
+            }))
+            return 0
         print(_json({"success": True, "project_directory": str(target_path), "total_runs": 0, "runs": []}))
         return 0
 
     run_dirs = [d for d in runs_dir.iterdir() if d.is_dir()]
 
+    # Collect metadata for sorting (newest first)
+    runs_with_meta: list[tuple[Path, str, dict[str, Any] | None]] = []
+    for d in run_dirs:
+        summary_file = d / "run_summary.json"
+        summary_data: dict[str, Any] | None = None
+        started_at = d.name
+        if summary_file.exists():
+            try:
+                summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
+                started_at = str(summary_data.get("started_at") or d.name)
+            except Exception:
+                pass
+        runs_with_meta.append((d, started_at, summary_data))
+
+    runs_with_meta.sort(key=lambda x: x[1], reverse=True)
+
+    if getattr(args, "prune", False):
+        if getattr(args, "keep", None) is None or args.keep <= 0:
+            print(
+                _json({"success": False, "error": "--keep must be a positive integer when --prune is specified"}),
+                file=sys.stderr,
+            )
+            return 1
+
+        total_before = len(runs_with_meta)
+        to_delete = runs_with_meta[args.keep:]
+        deleted_ids: list[str] = []
+
+        for r_dir, _, _ in to_delete:
+            safe_dir = ensure_within(r_dir, runs_dir)
+            if safe_dir.resolve() == runs_dir.resolve():
+                print(_json({"success": False, "error": "Refusing to delete runs directory itself"}), file=sys.stderr)
+                return 1
+            shutil.rmtree(safe_dir)
+            deleted_ids.append(r_dir.name)
+
+        kept_count = total_before - len(deleted_ids)
+        print(_json({
+            "success": True,
+            "project_directory": str(target_path),
+            "total_before": total_before,
+            "kept": kept_count,
+            "deleted": len(deleted_ids),
+            "deleted_run_ids": deleted_ids,
+        }))
+        return 0
+
     if args.run_id:
-        target_run = next((d for d in run_dirs if d.name == args.run_id or d.name.endswith(args.run_id)), None)
-        if not target_run:
+        match = next(
+            (item for item in runs_with_meta if item[0].name == args.run_id or item[0].name.endswith(args.run_id)),
+            None,
+        )
+        if not match:
             print(_json({"success": False, "error": f"Run {args.run_id} not found"}), file=sys.stderr)
             return 1
-        summary_file = target_run / "run_summary.json"
-        if not summary_file.exists():
-            print(_json({"success": False, "error": f"Run summary not found in {target_run}"}), file=sys.stderr)
-            return 1
-        summary = json.loads(summary_file.read_text(encoding="utf-8"))
+        summary = match[2]
+        if summary is None:
+            summary_file = match[0] / "run_summary.json"
+            if not summary_file.exists():
+                print(_json({"success": False, "error": f"Run summary not found in {match[0]}"}), file=sys.stderr)
+                return 1
+            summary = json.loads(summary_file.read_text(encoding="utf-8"))
         print(_json({"success": True, "run": summary}))
         return 0
 
-    summaries: list[dict[str, Any]] = []
-    for d in run_dirs:
-        summary_file = d / "run_summary.json"
-        if summary_file.exists():
-            try:
-                data = json.loads(summary_file.read_text(encoding="utf-8"))
-                summaries.append(data)
-            except Exception:
-                summaries.append({"run_id": d.name, "success": False, "error_message": "Corrupted summary"})
+    summaries = []
+    for d, _, summary_data in runs_with_meta:
+        if summary_data is not None:
+            summaries.append(summary_data)
         else:
-            summaries.append({"run_id": d.name, "success": False, "error_message": "Missing summary"})
+            summary_file = d / "run_summary.json"
+            if summary_file.exists():
+                try:
+                    summaries.append(json.loads(summary_file.read_text(encoding="utf-8")))
+                except Exception:
+                    summaries.append({"run_id": d.name, "success": False, "error_message": "Corrupted summary"})
+            else:
+                summaries.append({"run_id": d.name, "success": False, "error_message": "Missing summary"})
 
-    summaries.sort(key=lambda x: str(x.get("started_at") or x.get("run_id") or ""), reverse=True)
     print(_json({
         "success": True,
         "project_directory": str(target_path),
@@ -192,6 +261,8 @@ def build_parser() -> argparse.ArgumentParser:
     runs.add_argument("project", nargs="?", default="", help="Project directory path")
     runs.add_argument("--input-json", help="Input JSON file describing the project")
     runs.add_argument("--run-id", help="Inspect a specific run ID")
+    runs.add_argument("--prune", action="store_true", help="Prune older runs keeping only N newest runs")
+    runs.add_argument("--keep", type=int, default=None, help="Number of newest runs to keep when pruning (must be > 0)")
     runs.set_defaults(func=_cmd_runs)
 
     parser.add_argument("--check", action="store_true", help=argparse.SUPPRESS)

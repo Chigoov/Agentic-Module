@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import Field
 
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
+from src.core.errors import HumanReviewRequired
 from src.schemas.claim import Claim
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
@@ -42,6 +43,8 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
     def _make_error_response(self, *, error_message: str, **extra: object) -> AcademicWritingResponse:
         return AcademicWritingResponse(
             success=False,
+            needs_human_review=bool(extra.get("needs_human_review", False)),
+            review_prompt=extra.get("review_prompt") if isinstance(extra.get("review_prompt"), str) else None,
             error_message=error_message,
             run_id=extra.get("run_id") if isinstance(extra.get("run_id"), str) else None,
             run_dir=extra.get("run_dir") if isinstance(extra.get("run_dir"), str) else None,
@@ -77,6 +80,8 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 )
                 return AcademicWritingResponse(
                     success=False,
+                    needs_human_review=orchestrated.needs_human_review,
+                    review_prompt=orchestrated.review_prompt,
                     error_message=orchestrated.error_message,
                     stages=orchestrated.stages,
                     draft_path=orchestrated.draft_path,
@@ -125,6 +130,19 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 stages=stages,
                 draft_path=orchestrated.draft_path,
                 docx_path=docx_path,
+                run_id=audit.run_id,
+                run_dir=str(audit.run_dir),
+            )
+        except HumanReviewRequired as exc:
+            audit.finish(
+                success=False,
+                error_message=str(exc),
+            )
+            return AcademicWritingResponse(
+                success=False,
+                needs_human_review=True,
+                review_prompt=exc.render(),
+                error_message=str(exc),
                 run_id=audit.run_id,
                 run_dir=str(audit.run_dir),
             )
