@@ -42,6 +42,8 @@ class OpenAlexTool(ResearchTool):
         "query_field_max": "NOT_VERIFIED",
     }
 
+    _integration_verified: ClassVar[bool] = False
+
     _BASE_URL: ClassVar[str] = "https://api.openalex.org/works"
 
     def _client(self) -> HttpClient:
@@ -153,7 +155,7 @@ class OpenAlexTool(ResearchTool):
             year_end=year,
             max_results=10,
         )
-        response = self._execute(request)
+        response = self.execute(request)
         if not response.success or not response.results:
             return None
         best_title, _score = best_title_match(title, [s.title for s in response.results])

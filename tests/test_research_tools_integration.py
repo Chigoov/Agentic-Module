@@ -36,8 +36,9 @@ def _assert_usable_sources(tool: object, sources: list[object]) -> None:
 def test_crossref_real_search() -> None:
     """Real Crossref search; prove at least one titled Source is produced."""
     tool = CrossrefTool()
+    assert tool.status() in {IntegrationStatus.CONFIGURED, IntegrationStatus.VERIFIED}
     request = ResearchRequest(query="deep learning", max_results=5)
-    response = tool._execute(request)
+    response = tool.execute(request)
 
     assert response.success is True
     _assert_usable_sources(tool, response.results)
@@ -55,7 +56,7 @@ def test_crossref_year_filter_passed_through() -> None:
     """Year filter must be encoded into the request (proven, not asserted on content)."""
     tool = CrossrefTool()
     request = ResearchRequest(query="deep learning", year_start=2018, year_end=2020, max_results=5)
-    response = tool._execute(request)
+    response = tool.execute(request)
     assert response.success is True
     # The filter is encoded as from-pub-date,until-pub-date (URL-encoded ``:`` → ``%3A``).
     assert "filter=from-pub-date%3A2018-01-01" in response.request_url
@@ -65,8 +66,9 @@ def test_crossref_year_filter_passed_through() -> None:
 def test_openalex_real_search() -> None:
     """Real OpenAlex search; prove at least one titled Source is produced."""
     tool = OpenAlexTool()
+    assert tool.status() in {IntegrationStatus.CONFIGURED, IntegrationStatus.VERIFIED}
     request = ResearchRequest(query="deep learning", max_results=5)
-    response = tool._execute(request)
+    response = tool.execute(request)
 
     assert response.success is True
     _assert_usable_sources(tool, response.results)
@@ -80,8 +82,9 @@ def test_openalex_real_search() -> None:
 def test_pubmed_real_search() -> None:
     """Real PubMed esearch+esummary; prove at least one titled Source is produced."""
     tool = PubMedTool()
+    assert tool.status() in {IntegrationStatus.CONFIGURED, IntegrationStatus.VERIFIED}
     request = ResearchRequest(query="deep learning", max_results=5)
-    response = tool._execute(request)
+    response = tool.execute(request)
 
     assert response.success is True
     _assert_usable_sources(tool, response.results)

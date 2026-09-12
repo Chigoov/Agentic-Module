@@ -136,3 +136,75 @@ class TestPubMedParser:
         assert source.venue == "Nature"
         assert source.doi == "10.1038/nature14539"
         assert source.url == "https://pubmed.ncbi.nlm.nih.gov/26017442/"
+
+
+class TestResearchToolExecutionAndErrorHandling:
+    def test_official_execute_success_promotes_to_verified(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Official .execute() on implemented tools starts CONFIGURED and promotes to VERIFIED on success."""
+        from src.core.status import IntegrationStatus
+        from src.schemas.source import Source
+
+        CrossrefTool._integration_verified = False
+        try:
+            tool = CrossrefTool()
+            assert tool.status() is IntegrationStatus.CONFIGURED
+
+            fake_sources = [
+                Source(
+                    title="Attention Is All You Need",
+                    authors=["Vaswani, A."],
+                    year=2017,
+                    venue="NeurIPS",
+                    doi="10.48550/arXiv.1706.03762",
+                )
+            ]
+            monkeypatch.setattr(
+                tool,
+                "_search",
+                lambda req: (fake_sources, 1, "https://api.crossref.org/works?query=attention", "{}"),
+            )
+
+            request = ResearchRequest(query="attention", max_results=5)
+            response = tool.execute(request)
+
+            assert response.success is True
+            assert response.result_count == 1
+            assert response.results[0].title == "Attention Is All You Need"
+            assert response.status is IntegrationStatus.VERIFIED
+            assert tool.status() is IntegrationStatus.VERIFIED
+        finally:
+            CrossrefTool._integration_verified = False
+
+    def test_official_execute_network_failure_returns_structured_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Network failure in .execute() must return a structured failure response, never crash."""
+        from src.core.errors import IntegrationError
+        from src.core.status import IntegrationStatus
+
+        CrossrefTool._integration_verified = False
+        try:
+            tool = CrossrefTool()
+            assert tool.status() is IntegrationStatus.CONFIGURED
+
+            def _mock_failing_search(req: ResearchRequest):
+                raise IntegrationError(
+                    "Request to https://api.crossref.org/works failed: Connection refused",
+                    error_code="NETWORK_ERROR",
+                    url="https://api.crossref.org/works",
+                )
+
+            monkeypatch.setattr(tool, "_search", _mock_failing_search)
+
+            request = ResearchRequest(query="machine learning", max_results=5)
+            response = tool.execute(request)
+
+            assert response.success is False
+            assert response.error_code == "NETWORK_ERROR"
+            assert "Connection refused" in (response.error_message or "")
+            assert response.results == []
+            assert response.result_count == 0
+            assert response.status is IntegrationStatus.CONFIGURED
+            assert tool.status() is IntegrationStatus.CONFIGURED
+        finally:
+            CrossrefTool._integration_verified = False

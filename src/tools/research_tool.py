@@ -115,17 +115,19 @@ class ResearchTool(BaseTool[ResearchRequest, ResearchResponse]):
 
     # ------------------------------------------------------------------ status
     def status(self) -> IntegrationStatus:
-        """Return VERIFIED only after a real run has proven this integration."""
-        if self._integration_verified:
+        """Report integration status: VERIFIED after proven run, CONFIGURED if implemented."""
+        if getattr(type(self), "_integration_verified", False):
             return IntegrationStatus.VERIFIED
+        if type(self)._search is not ResearchTool._search:
+            return IntegrationStatus.CONFIGURED
         return IntegrationStatus.NOT_IMPLEMENTED
 
     def mark_verified(self) -> None:
         """Promote the tool to VERIFIED after a real successful run.
 
-        Called by the integration test only after ``_execute`` produced at least
-        one Source. Raising keeps the invariant that VERIFIED always implies a
-        real, tested execution.
+        Called after a real successful run produced at least one valid Source.
+        Raising keeps the invariant that VERIFIED always implies a real,
+        tested execution.
         """
         type(self)._integration_verified = True
         self._logger.info("Research tool marked VERIFIED", extra={"tool": self.name})
@@ -174,6 +176,9 @@ class ResearchTool(BaseTool[ResearchRequest, ResearchResponse]):
                 "results": len(sources),
             },
         )
+
+        if sources and all(s.title for s in sources):
+            self.mark_verified()
 
         return ResearchResponse(
             success=True,

@@ -45,6 +45,8 @@ class SemanticScholarTool(ResearchTool):
         "query_field_max": "NOT_VERIFIED",
     }
 
+    _integration_verified: ClassVar[bool] = False
+
     _BASE_URL: ClassVar[str] = "https://api.semanticscholar.org/graph/v1/paper/search"
     _FIELDS: ClassVar[str] = (
         "title,authors,year,venue,journal,externalIds,abstract,"

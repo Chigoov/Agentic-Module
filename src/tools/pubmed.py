@@ -42,6 +42,8 @@ class PubMedTool(ResearchTool):
         "query_field_max": "NOT_VERIFIED",
     }
 
+    _integration_verified: ClassVar[bool] = False
+
     _ESEARCH_URL: ClassVar[str] = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     _ESUMMARY_URL: ClassVar[str] = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
