@@ -64,11 +64,34 @@ Setiap kali `run-academic` dieksekusi, sistem menyimpan snapshot input, klaim, e
 
 > **Peringatan Integritas:** Output naskah final yang dihasilkan oleh workflow otomatis harus tetap ditelaah dan diverifikasi secara kritis oleh manusia sebelum diserahkan atau dipublikasikan.
 
-## Batas Aman
+## Mode Kapabilitas Lingkungan (Capability Detection)
 
-- Agent tidak boleh mengarang referensi.
-- Agent tidak boleh mengarang evidence.
+Sebelum mengeksekusi tugas, agen harus mengenali mode lingkungannya:
+
+1. **Full Mode (Sandbox + Terminal + Internet Search + File Write):**
+   - Lakukan pencarian dan verifikasi sumber nyata via internet search (DOI, penulis, tahun, jurnal, volume, isu, halaman).
+   - Susun input JSON dengan status `APPROVED`.
+   - Jalankan `python -m src run-academic --input-json input.json`.
+   - Pastikan audit lulus dan ekspor bundle dengan `python -m src export-bundle`.
+
+2. **Limited Mode (Terminal atau Internet Terbatas):**
+   - Jika tanpa internet: gunakan hanya sumber yang sudah tersimpan atau diverifikasi lokal.
+   - Jika tanpa sandbox terminal: siapkan payload JSON yang valid dan instruksikan pengguna untuk menjalankan CLI secara manual.
+   - Laporkan batas environment secara transparan; jangan mengklaim eksekusi jika tidak dijalankan.
+
+3. **Draft-Only Mode (Tanpa Internet / Sumber Belum Diverifikasi):**
+   - **DILARANG KERAS** memalsukan verifikasi, mengarang DOI, atau mengarang kutipan.
+   - **DILARANG** melakukan finalisasi akademik siap publikasi.
+   - Tandai status sumber sebagai `PROPOSED` atau `[sumber belum lengkap]`.
+   - Hasilkan hanya draft kerja/outline konseptual dengan disclaimer belum terverifikasi.
+
+## Batas Aman & Aturan Anti-Fabrikasi
+
+- Agent tidak boleh mengarang referensi, DOI, nomor halaman, atau volume.
+- Agent tidak boleh mengarang evidence atau kutipan.
 - Agent tidak boleh membuat DOCX jika audit gagal.
+- Agent tidak boleh memfinalisasi output akademik jika sumber belum diverifikasi nyata.
+- OpenRouter atau model provider tertentu bukan syarat wajib; engine berjalan lokal dan deterministik.
 - Jika provider/model belum dikonfigurasi, routing harus gagal aman.
 
 ## Kewajiban Output Akademik

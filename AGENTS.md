@@ -50,9 +50,43 @@ python -m src export-bundle --input-json path\to\input.json --run-id <run_id>
 - Academic final outputs must convert every verified source into APA 7 in-text citations and a bibliography entry, or mark the source as `[sumber belum lengkap]`.
 - For every data source, legal source, and scientific article, report the source name, year, title, link/DOI when available, and page/section when available.
 - Every final academic output must be reviewed and verified by a human expert before publication or submission.
+- Never finalize academic output (SourceState.APPROVED or final DOCX) if sources have not been verified against real bibliographic databases (Crossref/PubMed/etc.).
 - Check the command exit code and parse stdout as JSON when the command returns JSON.
 - Run `python -m pytest -q --tb=short` after code changes.
 - Run `python -m src check` before reporting completion.
+
+## Environment Capability Modes
+
+Before running academic tasks, detect your environment capability:
+
+1. **Full Mode (Sandbox + Terminal + Internet + File Write):**
+   - Verify real sources via internet search (Crossref, DOI, venues, authors, volume, issue, pages).
+   - Build verified JSON payload (`input_json.md`).
+   - Run `python -m src run-academic --input-json input.json`.
+   - Verify citation and fact audits (`passed: true`).
+   - Export bundle with `python -m src export-bundle`.
+
+2. **Limited Mode (Missing Terminal or Internet or Write Access):**
+   - If no internet: operate only on verified sources already stored locally. Do not guess new sources.
+   - If no terminal: verify sources, construct valid input JSON, and provide exact CLI command for user execution.
+   - Transparently disclose environment limits; never pretend execution occurred if skipped.
+
+3. **Draft-Only Mode (No Internet Search / Sources Cannot Be Verified):**
+   - STRICTLY FORBIDDEN: creating fake DOIs, fake quotes, fake page numbers, or fake bibliographies.
+   - STRICTLY FORBIDDEN: final academic publication or claiming sources are verified.
+   - Mark claims as `PROPOSED` or `INSUFFICIENT_EVIDENCE`.
+   - Mark incomplete sources as `[sumber belum lengkap]`.
+   - Produce only conceptual outlines or draft notes with explicit unverified disclaimers.
+
+## Architectural Boundaries
+
+- **Skill:** Workflow instructions, ethical rules, and agent reasoning protocol.
+- **Python Engine:** Deterministic verification gates, audit checks, citation formatting, and DOCX/ZIP packaging.
+- **Model Provider:** Optional component (OpenRouter or any provider is NOT a mandatory prerequisite; the engine runs locally and deterministically).
+- **Internet Search:** Mandatory component for real source verification.
+- **Sandbox/Terminal:** Mandatory component for actual execution and compilation.
+
+See `skills/autonomi-agentic-ilmiah/SKILL.md` and `skills/autonomi-agentic-ilmiah/references/` for detailed reference.
 
 ## Minimal JSON Shape
 
