@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
 from src.core.errors import HumanReviewRequired
-from src.schemas.claim import Claim
+from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project
@@ -27,6 +29,8 @@ class AcademicWritingRequest(AgentRequest):
     generate_docx: bool = True
     command: str | None = "run-academic"
     input_path: str | None = None
+    semantic_reviews: list[SemanticReview] = Field(default_factory=list)
+    verification_engine: Any = None
 
 
 class AcademicWritingResponse(AgentResponse):
@@ -69,6 +73,8 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                     evidence=request.evidence,
                     sources=request.sources,
                     outline=request.outline,
+                    semantic_reviews=request.semantic_reviews,
+                    verification_engine=request.verification_engine,
                 )
             )
             if not orchestrated.success:

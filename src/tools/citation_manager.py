@@ -172,10 +172,13 @@ def detect_orphan_author_year_citations(text: str, known_sources: list[Source]) 
         if not base.endswith(f", {year}"):
             continue
         name_part = base[: -len(f", {year}")].strip()
-        # Accept both "Surname" and "Surname et al." lead tokens.
+        # Accept both "Surname" and "Surname et al." lead tokens, as well as "&"-joined two-author leads.
         lead = name_part.split(" et al.", 1)[0].strip().casefold()
+        first_author = lead.split(" & ", 1)[0].strip()
         if lead:
             known.add((lead, year))
+        if first_author:
+            known.add((first_author, year))
     found: list[str] = []
     for match in AUTHOR_YEAR_CITATION_PATTERN.finditer(text):
         citation = match.group(0)

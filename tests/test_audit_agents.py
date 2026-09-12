@@ -10,9 +10,20 @@ from src.agents.audit import (
     FactAuditAgent,
     FactAuditRequest,
 )
-from src.schemas.claim import Claim, ClaimImportance, ClaimStatus
+from src.schemas.claim import (
+    Claim,
+    ClaimImportance,
+    ClaimStatus,
+    SemanticDecision,
+    SemanticReview,
+)
+from src.schemas.evidence import (
+    Evidence,
+    EvidenceLocation,
+    ExtractionMethod,
+)
 from src.schemas.project import Project
-from src.schemas.source import Source
+from src.schemas.source import Source, SourceState
 
 
 def _project(tmp_path: Path) -> Project:
@@ -47,13 +58,52 @@ def test_fact_audit_blocks_unsupported_important_claim(tmp_path: Path) -> None:
 
 
 def test_fact_audit_passes_writable_claim(tmp_path: Path) -> None:
+    source = Source(
+        id="src_1",
+        title="Research on learning",
+        authors=["Smith, J."],
+        year=2024,
+        venue="Journal of Learning",
+        state=SourceState.APPROVED,
+        abstract="Supported empirical finding in education.",
+    )
+    evidence = Evidence(
+        id="evd_1",
+        claim_id="clm_1",
+        source_id="src_1",
+        evidence_text="Supported empirical finding in education.",
+        location=EvidenceLocation(locator="abstract"),
+        extraction_method=ExtractionMethod.VERBATIM_ABSTRACT,
+        verbatim=True,
+    )
     claim = Claim(
-        claim_text="Supported",
+        id="clm_1",
+        claim_text="Supported empirical finding in education.",
         importance=ClaimImportance.HIGH,
+        supporting_sources=["src_1"],
         supporting_evidence=["evd_1"],
         status=ClaimStatus.SUPPORTED,
     )
+    review = SemanticReview(
+        claim_id="clm_1",
+        decision=SemanticDecision.SUPPORTED,
+        reason="Evidence directly supports claim meaning.",
+        evidence_id="evd_1",
+        source_id="src_1",
+        evidence_excerpt="Supported empirical finding in education.",
+        location="abstract",
+        reviewer="antigravity_agent",
+        method="semantic_evaluation",
+    )
     response = FactAuditAgent().execute(
-        FactAuditRequest(project=_project(tmp_path), claims=[claim])
+        FactAuditRequest(
+            project=_project(tmp_path),
+            claims=[claim],
+            evidence=[evidence],
+            sources=[source],
+            semantic_reviews=[review],
+        )
     )
     assert response.passed is True
+    assert response.structural_passed is True
+    assert response.semantic_passed is True

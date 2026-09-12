@@ -72,6 +72,31 @@ pip install -r requirements.txt
 
 ## Quick Start
 
+### Windows Shortcut Launcher (`aai.bat`)
+
+From `DATA BASE/`, you can use the short `aai.bat` launcher:
+
+```cmd
+:: 1. Setelah clone (cek kesiapan sistem)
+aai.bat check
+
+:: 2. Buka live progress di browser (menyalakan monitor jika belum aktif)
+aai.bat open
+
+:: 3. Jalankan workflow akademik dari input JSON
+aai.bat run input_edjust_mini.json
+
+:: 4. Lihat riwayat audit trail eksekusi
+aai.bat runs input_edjust_mini.json
+
+:: 5. Ekspor bundle paket riset (.zip)
+aai.bat bundle input_edjust_mini.json
+```
+
+---
+
+### Direct Python Commands
+
 Run the system health check (validates spec files, config, storage, and
 that no integration is falsely claimed as verified):
 

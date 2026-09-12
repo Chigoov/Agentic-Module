@@ -156,7 +156,7 @@ class VerificationReport(BaseRecord):
 
     def _recompute_levels(self) -> None:
         for level in VerificationLevel:
-            self.levels[level.value] = self.level_status(level).value
+            self.levels[level.value] = self.level_status(level)
 
     def add_error(self, error: ErrorInfo) -> None:
         self.errors.append(error)

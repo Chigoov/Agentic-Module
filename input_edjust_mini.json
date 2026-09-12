@@ -23,8 +23,9 @@
       "pages": "1269–1287",
       "doi": "10.1111/j.1741-3737.2000.01269.x",
       "url": "https://doi.org/10.1111/j.1741-3737.2000.01269.x",
+      "abstract": "In general, the accumulated research suggests that marital dissolution has the potential to create considerable turmoil in people's lives. But people vary greatly in their reactions. Divorce benefits some individuals, leads others to experience temporary decrements in well-being, and forces others on a downward trajectory from which they might never recover fully.",
       "source_type": "JOURNAL_ARTICLE",
-      "state": "APPROVED"
+      "state": "DOI_VERIFIED"
     },
     {
       "id": "src_pedro_carroll_2005",
@@ -40,8 +41,9 @@
       "pages": "52–64",
       "doi": "10.1111/j.1744-1617.2005.00007.x",
       "url": "https://doi.org/10.1111/j.1744-1617.2005.00007.x",
+      "abstract": "The Children of Divorce Intervention Program is described in greater detail as an example of a preventive program with six controlled studies documenting multiple benefits to children, including reductions in anxiety, behavior problems, somatic symptoms, and increases in their healthy adjustment at home and at school.",
       "source_type": "JOURNAL_ARTICLE",
-      "state": "APPROVED"
+      "state": "DOI_VERIFIED"
     },
     {
       "id": "src_mcintosh_2000",
@@ -57,8 +59,9 @@
       "pages": "55–69",
       "doi": "10.1002/crq.3890180106",
       "url": "https://doi.org/10.1002/crq.3890180106",
+      "abstract": "Encouraging findings from the first group of families to work through the model are presented, indicating both anticipated and unanticipated gains for both children and parents.",
       "source_type": "JOURNAL_ARTICLE",
-      "state": "APPROVED"
+      "state": "DOI_VERIFIED"
     }
   ],
   "claims": [
@@ -114,13 +117,14 @@
       "schema_version": "1.0",
       "claim_id": "clm_divorce_stress",
       "source_id": "src_amato_2000",
-      "evidence_text": "Penelitian empiris menunjukkan bahwa dampak perceraian terhadap kesejahteraan anak bervariasi secara substansial, di mana faktor moderasi dan sumber daya penanganan masalah berperan penting dalam adaptasi.",
+      "evidence_text": "In general, the accumulated research suggests that marital dissolution has the potential to create considerable turmoil in people's lives. But people vary greatly in their reactions.",
       "relationship": "supports",
-      "extraction_method": "MODEL_PARAPHRASE",
-      "verbatim": false,
-      "quote_verified": false,
+      "extraction_method": "VERBATIM_ABSTRACT",
+      "verbatim": true,
+      "quote_verified": true,
       "location": {
-        "locator": "abstract"
+        "locator": "abstract",
+        "section": "Abstract"
       }
     },
     {
@@ -128,13 +132,14 @@
       "schema_version": "1.0",
       "claim_id": "clm_social_support_program",
       "source_id": "src_pedro_carroll_2005",
-      "evidence_text": "Evaluasi program preventif seperti Children of Divorce Intervention Program membuktikan adanya penurunan kecemasan dan masalah perilaku serta peningkatan penyesuaian yang sehat di rumah dan sekolah.",
+      "evidence_text": "The Children of Divorce Intervention Program is described in greater detail as an example of a preventive program with six controlled studies documenting multiple benefits to children, including reductions in anxiety, behavior problems, somatic symptoms, and increases in their healthy adjustment at home and at school.",
       "relationship": "supports",
-      "extraction_method": "MODEL_PARAPHRASE",
-      "verbatim": false,
-      "quote_verified": false,
+      "extraction_method": "VERBATIM_ABSTRACT",
+      "verbatim": true,
+      "quote_verified": true,
       "location": {
-        "locator": "abstract"
+        "locator": "abstract",
+        "section": "Abstract"
       }
     },
     {
@@ -142,13 +147,14 @@
       "schema_version": "1.0",
       "claim_id": "clm_legal_inclusion",
       "source_id": "src_mcintosh_2000",
-      "evidence_text": "Model mediasi yang inklusif terhadap anak memfasilitasi pertimbangan kebutuhan unik anak dalam pemisahan orang tua dan memberikan dampak positif bagi penyesuaian anak dan orang tua.",
+      "evidence_text": "Encouraging findings from the first group of families to work through the model are presented, indicating both anticipated and unanticipated gains for both children and parents.",
       "relationship": "supports",
-      "extraction_method": "MODEL_PARAPHRASE",
-      "verbatim": false,
-      "quote_verified": false,
+      "extraction_method": "VERBATIM_ABSTRACT",
+      "verbatim": true,
+      "quote_verified": true,
       "location": {
-        "locator": "abstract"
+        "locator": "abstract",
+        "section": "Abstract"
       }
     }
   ],
@@ -181,5 +187,43 @@
         ]
       }
     ]
-  }
+  },
+  "semantic_reviews": [
+    {
+      "claim_id": "clm_divorce_stress",
+      "decision": "SUPPORTED",
+      "reason": "Kutipan verbatim abstrak Amato (2000) membuktikan potensi distres akibat perceraian serta variabilitas respon penyesuaian individu.",
+      "evidence_id": "evd_amato_2000",
+      "source_id": "src_amato_2000",
+      "evidence_excerpt": "In general, the accumulated research suggests that marital dissolution has the potential to create considerable turmoil in people's lives. But people vary greatly in their reactions.",
+      "location": "abstract",
+      "reviewer": "antigravity_agent",
+      "method": "semantic_evaluation",
+      "timestamp": "2026-09-12T00:00:00Z"
+    },
+    {
+      "claim_id": "clm_social_support_program",
+      "decision": "SUPPORTED",
+      "reason": "Kutipan verbatim abstrak Pedro-Carroll (2005) membuktikan program preventif CODIP mereduksi kecemasan dan masalah perilaku serta memperkuat resiliensi anak.",
+      "evidence_id": "evd_pedro_carroll_2005",
+      "source_id": "src_pedro_carroll_2005",
+      "evidence_excerpt": "The Children of Divorce Intervention Program is described in greater detail as an example of a preventive program with six controlled studies documenting multiple benefits to children, including reductions in anxiety, behavior problems, somatic symptoms, and increases in their healthy adjustment at home and at school.",
+      "location": "abstract",
+      "reviewer": "antigravity_agent",
+      "method": "semantic_evaluation",
+      "timestamp": "2026-09-12T00:00:00Z"
+    },
+    {
+      "claim_id": "clm_legal_inclusion",
+      "decision": "SUPPORTED",
+      "reason": "Kutipan verbatim abstrak McIntosh (2000) mengonfirmasi model mediasi inklusif anak memberikan dampak positif bagi penyesuaian transisi keluarga.",
+      "evidence_id": "evd_mcintosh_2000",
+      "source_id": "src_mcintosh_2000",
+      "evidence_excerpt": "Encouraging findings from the first group of families to work through the model are presented, indicating both anticipated and unanticipated gains for both children and parents.",
+      "location": "abstract",
+      "reviewer": "antigravity_agent",
+      "method": "semantic_evaluation",
+      "timestamp": "2026-09-12T00:00:00Z"
+    }
+  ]
 }

@@ -30,11 +30,30 @@ def test_cli_monitor_parser_accepts_host_and_port() -> None:
     assert args.port == 0
 
 
-def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys) -> None:
+def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys, monkeypatch) -> None:
+    class _FakeCliProvider:
+        name = "fake_cli"
+        def lookup_by_doi(self, doi: str):
+            return None
+        def lookup_by_bibliographic(self, title: str, authors=None, year=None):
+            return Source(title=title, authors=authors or ["Smith, J."], year=year or 2024)
+
+    from src.tools.verification_tool import VerificationEngine
+    monkeypatch.setattr(
+        "src.runtime.cli.VerificationEngine",
+        lambda *a, **kw: VerificationEngine(providers=[_FakeCliProvider()]),
+    )
+
     project_dir = tmp_path / "project"
     project_dir.mkdir()
     project = Project(name="project", workspace="tmp", path=str(project_dir), title="Test")
-    source = Source(title="Paper", authors=["Smith, J."], year=2024, state=SourceState.APPROVED)
+    source = Source(
+        title="Paper",
+        authors=["Smith, J."],
+        year=2024,
+        state=SourceState.APPROVED,
+        abstract="The program improved attendance.",
+    )
     claim = Claim(
         claim_text="The program improved attendance.",
         supporting_sources=[source.id],
@@ -51,12 +70,24 @@ def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys) -> None:
         quote_verified=True,
     )
     outline = Outline(title="Test", sections=[OutlineSection(title="Findings", claim_ids=[claim.id])])
+    review = {
+        "claim_id": claim.id,
+        "decision": "SUPPORTED",
+        "reason": "Empirical evidence directly supports the assertion.",
+        "evidence_id": evidence.id,
+        "source_id": source.id,
+        "evidence_excerpt": evidence.evidence_text,
+        "location": "abstract",
+        "reviewer": "antigravity_agent",
+        "method": "semantic_evaluation",
+    }
     payload = {
         "project": project.to_dict(),
         "sources": [source.to_dict()],
         "claims": [claim.to_dict()],
         "evidence": [evidence.to_dict()],
         "outline": outline.to_dict(),
+        "semantic_reviews": [review],
     }
     input_path = tmp_path / "input.json"
     input_path.write_text(json.dumps(payload), encoding="utf-8")

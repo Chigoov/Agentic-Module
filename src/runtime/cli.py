@@ -14,11 +14,12 @@ from src.core.paths import PathResolutionError, get_paths
 from src.core.storage import ensure_within
 from src.runtime.bootstrap import bootstrap, health_check
 from src.runtime.monitor import serve
-from src.schemas.claim import Claim
+from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project
 from src.schemas.source import Source
+from src.tools.verification_tool import VerificationEngine
 from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
 
 __all__ = ["main"]
@@ -80,6 +81,10 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
     evidence = [Evidence.model_validate(item) for item in payload.get("evidence", [])]
     sources = [Source.model_validate(item) for item in payload.get("sources", [])]
     outline = Outline.model_validate(payload["outline"]) if payload.get("outline") else None
+    semantic_reviews = [
+        SemanticReview.model_validate(item)
+        for item in payload.get("semantic_reviews", [])
+    ]
 
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
@@ -88,6 +93,8 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
             evidence=evidence,
             sources=sources,
             outline=outline,
+            semantic_reviews=semantic_reviews,
+            verification_engine=VerificationEngine(),
             generate_docx=not args.no_docx,
             command="run-academic",
             input_path=args.input_json,

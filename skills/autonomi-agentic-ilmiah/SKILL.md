@@ -1,19 +1,30 @@
 ---
 name: autonomi-agentic-ilmiah
-description: Portable agent protocol and operational workflow for AUTONOMI AGENTIC ILMIAH. Guides AI agents across any sandbox environment to plan, verify, audit, and generate evidence-controlled academic writing without fabricating sources, citations, or data.
+description: Portable agent protocol and operational workflow for AUTONOMI AGENTIC ILMIAH (AAI). Guides AI agents across any environment (Kiro IDE, Antigravity, Claude, Codex, GPT) to plan, verify, audit, and generate evidence-controlled academic writing without fabricating sources, citations, or data.
 metadata:
-  short-description: Evidence-controlled academic research and writing protocol
+  short-description: Evidence-controlled academic research and writing protocol (AAI)
 ---
 
-# AUTONOMI AGENTIC ILMIAH — Portable Agent Protocol
+# AUTONOMI AGENTIC ILMIAH (AAI) — Portable Agent Protocol
 
-Protokol operasional ini memandu agen AI (Codex, Claude, GPT, Gemini, atau model mandiri) untuk mengoperasikan repositori **AUTONOMI AGENTIC ILMIAH** secara aman, deterministik, dan bebas dari halusinasi akademik.
+Protokol operasional ini memandu agen AI (Kiro IDE, Antigravity, Claude, Codex, GPT, atau model lainnya) untuk mengoperasikan repositori **AUTONOMI AGENTIC ILMIAH (AAI)** secara aman, deterministik, dan berintegritas akademik tinggi.
 
 ---
 
-## 1. Pemisahan Peran Arsitektur
+## 1. Identitas & Pemicu Penggunaan Skill (Triggers)
 
-Agar sistem dapat berjalan portabel di berbagai environment agen, bedakan secara tegas peran lima komponen utama:
+* **Singkatan Resmi:** **AAI** = **AUTONOMI AGENTIC ILMIAH**.
+* **Kapan Skill Ini Digunakan:**
+  Aktifkan protokol ini setiap kali pengguna meminta:
+  - *"gunakan AAI"*, *"pakai skill aai"*, *"jalankan autonomi agentic ilmiah"*;
+  - pembuatan naskah karya ilmiah / riset berbasis bukti nyata (*evidence-controlled academic writing*);
+  - penelusuran pustaka, verifikasi sitasi APA 7, audit fakta, dan pembuatan draf serta dokumen `.docx` akademik anti-halusinasi.
+
+---
+
+## 2. Pemisahan Peran Arsitektur
+
+Agar sistem berjalan portabel di berbagai environment agen, bedakan secara tegas peran lima komponen utama:
 
 1. **Skill (Protokol Workflow & Instruksi Kognitif):**
    Panduan aturan etika riset, alur kerja, validasi integritas data, dan heuristik penalaran yang wajib ditaati oleh agen AI. Skill **bukan mesin eksekusi** dan **bukan model runtime**.
@@ -21,119 +32,121 @@ Agar sistem dapat berjalan portabel di berbagai environment agen, bedakan secara
    Kumpulan modul Python di folder `DATA BASE` (`src/`) yang mengeksekusi pemeriksaan skema (Pydantic), gate integritas akademik (`gates.py`), audit sitasi dan fakta (`audit.py`), kompilasi dokumen Word (`docx_generator.py`), pelacakan jejak run (`audit_trail.py`), serta pengemasan berkas (`export_bundle.py`).
 3. **Model Provider (Komponen Opsional):**
    Penyedia inferensi LLM tambahan (seperti model lokal Ollama, vLLM, atau API eksternal). Model provider **bersifat opsional**; engine inti repositori bekerja secara deterministik tanpa mewajibkan OpenRouter atau penyedia komersial tertentu.
-4. **Internet Search (Komponen Wajib untuk Verifikasi Sumber):**
-   Kemampuan web search / API query (Crossref, PubMed, Semantic Scholar, dsb.) yang digunakan oleh agen untuk memverifikasi keberadaan publikasi nyata, mencocokkan DOI resmi, mengecek nomor volume/isu/halaman, dan memastikan kutipan bukan rekayasa.
-5. **Sandbox & Terminal (Komponen Wajib untuk Eksekusi Nyata):**
-   Environment eksekusi lokal tempat agen dapat menjalankan perintah terminal (`python -m src ...`) dan menulis berkas luaran proyek (`draft.md`, `final.docx`, `runs/`, `exports/`).
+4. **Internet Search (Komponen Agen untuk Verifikasi Sumber):**
+   Kemampuan web search / API query (Crossref, PubMed, Semantic Scholar, dsb.) milik agen AI untuk memverifikasi keberadaan publikasi nyata, mencocokkan DOI resmi, mengecek nomor volume/isu/halaman, dan memastikan kutipan bukan rekayasa.
+5. **Sandbox & Terminal (Lingkungan Eksekusi):**
+   Environment eksekusi lokal tempat agen dapat menjalankan perintah launcher lokal (`.\aai.bat ...` atau `python -m src ...`) dan memeriksa luaran berkas proyek (`draft.md`, `final.docx`, `runs/`, `exports/`).
 
 ---
 
-## 2. Mode Deteksi Kapabilitas Lingkungan (Capability Detection)
+## 3. Protokol Kerja 6 Langkah AI Agent
 
-Sebelum memulai tugas akademik, agen AI wajib mengidentifikasi kapabilitas environment kerjanya:
+Ketika agen AI ditugaskan menyusun naskah akademik dengan AAI, jalankan siklus kerja berikut secara berurutan:
 
-### A. Full Mode (Sandbox + Terminal + Internet Search + File Write)
-* **Kondisi:** Agen memiliki akses shell terminal, dapat membaca/menulis berkas di sandbox, dan memiliki koneksi internet/search tool.
-* **Alur:**
-  1. Jalankan `python -m src check` untuk memastikan kesiapan repositori.
-  2. Gunakan internet search untuk mencari dan memverifikasi sumber ilmiah asli (judul, penulis, tahun, jurnal, volume, isu, halaman, DOI aktif).
-  3. Susun input JSON sesuai skema Pydantic (`input_json.md`) dengan status sumber `APPROVED`.
-  4. Jalankan `python -m src run-academic --input-json <path>`.
-  5. Periksa audit sitasi (`citation_audit.json`), audit fakta (`fact_audit.json`), dan naskah final (`final.docx`).
-  6. Kemas bukti run dengan `python -m src export-bundle`.
+```
++-----------+     +-------------------+     +------------------+
+| 1. CHECK  | --> | 2. WEB SEARCH     | --> | 3. COMPOSE JSON  |
+| aai check |     | (Cari Sumber Riil)|     | (Skema & Review) |
++-----------+     +-------------------+     +------------------+
+                                                      |
+                                                      v
++-----------+     +-------------------+     +------------------+
+| 6. REVISE | <-- | 5. AUDIT VERIFY   | <-- | 4. RUN AAI       |
+| (Perbaiki)|     | (Baca JSON Audit) |     | aai run in.json  |
++-----------+     +-------------------+     +------------------+
+```
 
-### B. Limited Mode (Salah Satu Komponen Terbatas)
-* **Kondisi:** Agen memiliki sandbox/terminal tetapi akses internet dibatasi, ATAU agen memiliki internet search tetapi akses terminal/file hanya baca (read-only).
-* **Alur & Batasan:**
-  * Jika terminal tersedia tetapi internet mati: agen hanya boleh menggunakan sumber yang **sudah terverifikasi sebelumnya** di repositori atau file lokal. Agen **dilarang menebak metadata baru**.
-  * Jika internet tersedia tetapi terminal tidak bisa dieksekusi: agen memverifikasi sumber dan menyusun payload JSON yang valid, lalu meminta pengguna menjalankan CLI secara manual di komputernya.
-  * Laporkan secara transparan komponen apa yang tidak tersedia; jangan berpura-pura telah mengeksekusi pipeline jika perintah tidak dijalankan.
+### Langkah 1: Pemeriksaan Kesiapan Sistem
+Sebelum melakukan manipulasi apa pun, agen wajib menjalankan health check sistem:
+```powershell
+.\aai.bat check
+# atau: python -m src check
+```
+Pastikan menghasilkan `[OK] System health check passed` (Exit Code: 0).
 
-### C. Draft-Only Mode (Tidak Ada Internet / Sumber Belum Terverifikasi)
-* **Kondisi:** Agen tidak memiliki akses internet search dan tidak ada database verifikasi lokal untuk memeriksa keabsahan sumber.
-* **Aturan Mutlak:**
-  1. **DILARANG KERAS memfinalisasi naskah akademik** atau mengklaim sumber telah terverifikasi.
-  2. **DILARANG mengarang DOI, kutipan teks, nomor halaman, atau entri daftar pustaka palsu.**
-  3. Status klaim wajib ditandai `PROPOSED` atau `INSUFFICIENT_EVIDENCE`.
-  4. Sumber yang belum lengkap wajib ditulis dengan penanda eksplisit `[sumber belum lengkap]`.
-  5. Hasil kerja hanya berupa *draft kerja konseptual / outline hipotetis*; dokumen tidak boleh dipromosikan sebagai karya ilmiah siap publikasi.
+### Langkah 2: Penelusuran Sumber Ilmiah Nyata (Internet Tool Agen)
+Agen diperbolehkan dan **diwajibkan menggunakan tools internet search miliknya sendiri** untuk menelusuri literatur ilmiah asli:
+* Cari publikasi bereputasi (Crossref, arXiv, PubMed, Google Scholar, IEEE, Springer, Elsevier).
+* Catat secara presisi: Judul lengkap, nama penulis (format APA: `Family, Initials`), tahun terbit, nama jurnal/venue, volume, nomor terbitan, rentang halaman, dan tautan resolusi DOI aktif.
+* Ambil teks kutipan asli secara **verbatim** langsung dari abstrak atau teks lengkap artikel.
+
+### Langkah 3: Penyusunan Payload Input JSON
+Agen menyusun berkas input JSON (misal `input_project.json`) sesuai skema Pydantic:
+* `sources`: Sumber ilmiah yang ditemukan dengan status deklarasi awal yang jujur (gunakan `DOI_VERIFIED` atau `DISCOVERED`).
+* `claims`: Proposisi klaim ilmiah yang ingin diajukan.
+* `evidence`: Bukti empiris pendukung. Untuk klaim konsekuensial (kausal, statistik, efektivitas, arah, mekanisme, absolut), **wajib menyertakan bukti verbatim dari abstract atau full text** (`extraction_method: "VERBATIM_ABSTRACT"` atau `"VERBATIM_FULLTEXT"`), bukan hanya parafrase model.
+* `outline`: Struktur bab dan subbab naskah yang memetakan claim IDs.
+* `semantic_reviews`: Catatan ulasan kesesuaian makna semantik antara klaim dan bukti:
+  - Wajib menyertakan 7 atribut lengkap: `claim_id`, `decision: "SUPPORTED"`, `reason`, `evidence_id`, `source_id`, `evidence_excerpt`, `location`, `reviewer`, `method`.
+  - `evidence_excerpt` wajib merupakan bagian kontigu utuh (*exact contiguous substring*) dari teks bukti asli.
+
+### Langkah 4: Eksekusi Alur Penulisan & Verifikasi
+Jalankan eksekusi melalui perintah launcher:
+```powershell
+.\aai.bat run input_project.json
+```
+Repositori akan secara deterministik menjalankan:
+`synthesis` ➔ `outline` ➔ `writing` ➔ `citation_audit` ➔ `fact_audit` ➔ `docx_generation`.
+
+### Langkah 5: Pembacaan Wajib Audit Sitasi, Audit Fakta, & Run Trail
+Agen **DILARANG menyatakan tugas berhasil sebelum memeriksa berkas audit**:
+1. Buka dan baca `citation_audit.json`:
+   - Pastikan `"passed": true`.
+   - Pastikan `"orphan_citations": []`, `"internal_tokens": []`, `"author_year_orphans": []`.
+2. Buka dan baca `fact_audit.json`:
+   - Pastikan `"passed": true`, `"structural_passed": true`, `"semantic_passed": true`.
+   - Pastikan `"unsupported_claims": []` dan `"rejection_reasons": []`.
+3. Periksa keberadaan naskah final:
+   - Pastikan `final.docx` berhasil dibuat di direktori proyek.
+   - Periksa draf `draft.md` bebas dari segala token internal (`turn...`, `view...`, `search...`, `filecite`, atau `【...】`).
+
+### Langkah 6: Tindakan Perbaikan jika Audit Gagal (Looping & Refinement)
+Jika audit gagal (`passed: false` atau muncul alasan penolakan pada `fact_audit.json`):
+* **DILARANG KERAS mengarang hasil, memalsukan persetujuan, atau mengubah draf manual secara sepihak.**
+* Agen wajib membaca `rejection_reasons` pada laporan audit, memperbaiki cacat pada berkas input JSON (misalnya: mencari kutipan verbatim yang sesuai di teks sumber asli, memperbaiki ketidaksesuaian ID rantai bukti, melengkapi parameter ulasan semantik yang hilang, atau menambahkan *qualifier* pada klaim yang terlalu kuat/overclaiming).
+* Jalankan ulang `.\aai.bat run input_project.json` hingga seluruh gerbang integritas akademik terpenuhi.
 
 ---
 
-## 3. Aturan Mutlak Integritas Akademik (Anti-Fabrikasi)
+## 4. Perintah Cepat Launcher `aai`
 
-1. **Anti-Fabrikasi Sumber & Metadata:**
-   * Jangan pernah mengarang nama penulis, tahun terbit, judul artikel, jurnal, volume, nomor terbitan, maupun rentang halaman.
-   * Jangan pernah mengarang atau menebak format DOI.
-2. **Larangan Finalisasi Tanpa Verifikasi:**
-   * Alur penulisan (`WriterAgent` dan `DocxGenerationTool`) menolak sumber yang statusnya belum mencapai tingkat verifikasi yang disyaratkan (`SourceState.APPROVED` / level verifikasi C).
-3. **Kewajiban Gate Integritas Output:**
-   Setiap teks luaran akademik wajib bersih dari indikasi kebocoran prompt atau token internal LLM:
-   * **DILARANG memuat token:** `turn...`, `view...`, `search...`, `filecite`, `citeturn`, atau kurung CJK `【...】`.
-   * **Sitasi In-Text APA 7 Presisi:** Titik akhir kalimat diletakkan *setelah* kurung sitasi, contoh: `... adaptasi individu (Amato, 2000).`
-   * **Daftar Pustaka APA 7 Granular:** Wajib menyertakan nama jurnal, volume, nomor, halaman, dan tautan resolusi DOI aktif:
-     `Journal of Marriage and Family, 62(4), 1269–1287. https://doi.org/10.1111/...`
-   * **Metadata Belum Lengkap:** Jika ada komponen yang tidak terlacak dari sumber asli, tandai `[sumber belum lengkap]` alih-alih melengkapi dengan tebakan.
-4. **Pemeriksaan Kritis oleh Manusia:**
-   Setiap naskah luaran otomatis wajib ditelaah secara kritis oleh peneliti/manusia sebelum dikirim ke dosen pembimbing, jurnal, atau simposium.
+Pengguna dan AI agent dapat menggunakan shortcut launcher `.\aai.bat` (atau `./aai.ps1`) di root repositori:
+
+| Perintah | Fungsi Utama | Perintah Asli Python |
+|---|---|---|
+| `.\aai.bat check` | Memeriksa kesiapan sistem repositori | `python -m src check` |
+| `.\aai.bat open` | Membuka monitor progress live di browser (port 8000) | Menjalankan server & buka browser |
+| `.\aai.bat monitor` | Menjalankan server monitor di terminal | `python -m src monitor --port 8000` |
+| `.\aai.bat run <file.json>` | Menjalankan alur penulisan akademik lengkap | `python -m src run-academic --input-json <file>` |
+| `.\aai.bat runs <file.json>` | Memeriksa riwayat audit trail eksekusi | `python -m src runs --input-json <file>` |
+| `.\aai.bat bundle <file.json>` | Mengekspor arsip paket run mandiri (.zip) | `python -m src export-bundle --input-json <file>` |
+| `.\aai.bat help` | Menampilkan panduan ringkas bantuan | - |
 
 ---
 
-## 4. Perintah Operasional CLI Utama
+## 5. Aturan Mutlak Integritas Akademik (Anti-Halusinasi)
 
-Seluruh perintah dijalankan dari root repositori (folder `DATA BASE`):
-
-### A. Health Check Repositori
-```powershell
-python -m src check
-```
-Memverifikasi integritas path, konfigurasi sistem, dan spesifikasi versi (Exit Code: 0).
-
-### B. Perencanaan Riset (Planning)
-```powershell
-python -m src plan "topik atau pertanyaan penelitian"
-```
-Menganalisis kebutuhan riset, mendeteksi mode, dan menyusun kata kunci serta tahapan pencarian.
-
-### C. Eksekusi Naskah Akademik (Academic Writing Mode)
-```powershell
-python -m src run-academic --input-json path/to/input.json
-```
-Menjalankan alur lengkap: synthesis ➔ outline ➔ writing ➔ citation audit ➔ fact audit ➔ docx generation. Menghasilkan naskah `draft.md`, `final.docx`, dan folder rekam jejak `runs/<run_id>/`.
-
-### D. Inspeksi Riwayat Run & Audit Trail
-```powershell
-# Melihat seluruh riwayat run proyek:
-python -m src runs --input-json path/to/input.json
-
-# Melihat rincian satu run spesifik:
-python -m src runs --input-json path/to/input.json --run-id <run_id>
-```
-
-### E. Retensi & Pemangkasan Run Lama
-```powershell
-# Menyimpan 20 run terbaru dan membersihkan sisanya secara aman:
-python -m src runs --input-json path/to/input.json --prune --keep 20
-```
-
-### F. Pengemasan Bundle Arsip Mandiri (.zip)
-```powershell
-# Mengemas luaran akademik, audit, dan snapshot run terbaru:
-python -m src export-bundle --input-json path/to/input.json
-```
-Menghasilkan berkas terkompresi portabel di `exports/bundle_<run_id>.zip` yang bebas dari data sensitif/token monitor.
-
-### G. Server Monitor Lokal (Opsional)
-```powershell
-python -m src monitor --port 8000
-```
-Menyediakan antarmuka dashboard localhost dan endpoint REST API (`/api/check`, `/api/plan`, `/api/run-academic`).
+1. **Anti-Fabrikasi Sumber & DOI:**
+   - Dilarang mengarang nama penulis, tahun terbit, nama jurnal, volume, nomor terbitan, maupun rentang halaman.
+   - Dilarang mengarang atau menebak format DOI (seperti `10.9999/...`).
+2. **Status Sumber Tidak Boleh Dikarang:**
+   - Flag `"state": "APPROVED"` pada payload input tidak dipercaya sebagai bukti verifikasi; seluruh sumber diverifikasi ulang via `VerificationEngine` (Crossref/OpenAlex) sebelum dokumen final dapat dibuat.
+3. **Kewajiban Bukti Verbatim untuk Klaim Konsekuensial:**
+   - Klaim kausal, statistik/numerik, efektivitas, arah, mekanisme, atau kata absolut tidak boleh hanya berlandaskan `MODEL_PARAPHRASE`. Wajib ada kutipan verbatim dari abstrak atau naskah lengkap sumber.
+4. **Pembersihan Token Internal AI:**
+   - Teks naskah final **DILARANG memuat token:** `turn...`, `view...`, `search...`, `filecite`, `citeturn`, atau kurung mentah `【...】`.
+5. **Sitasi & Daftar Pustaka APA 7:**
+   - Titik akhir kalimat diletakkan setelah kurung sitasi: `... adaptasi individu (Amato, 2000).`
+   - Daftar pustaka wajib memuat nama jurnal, volume, nomor, halaman, dan tautan resolusi DOI aktif.
 
 ---
 
-## 5. Berkas Referensi Pendukung
+## 6. Batasan Sistem dan Keterbukaan Ilmiah (Honest Reporting)
 
-Untuk panduan teknis mendalam, baca berkas referensi berikut:
-* [references/input-json.md](references/input-json.md): Format lengkap payload JSON yang valid beserta contoh sumber terverifikasi dan penanganan metadata tidak lengkap.
-* [references/environment-capabilities.md](references/environment-capabilities.md): Panduan penentuan mode kerja agen (Full, Limited, Draft-Only) dan matriks toleransi alat.
-* [references/dry-run-prompt.md](references/dry-run-prompt.md): Contoh alur prompt dari perumusan topik, pencarian bukti empiris, hingga eksekusi CLI.
+* **Jangan Pernah Mengklaim "100% Anti-Halusinasi":**  
+  Gunakan bahasa yang presisi dan jujur:
+  - *"Empat bypass integritas yang diuji telah tertutup secara deterministik."*
+  - *"Sumber dan metadata diverifikasi ulang terhadap basis data bibliografi resmi."*
+  - *"Evidence verbatim dicocokkan secara persis dengan abstrak/teks sumber yang tersedia."*
+* **Kebutuhan Human-in-the-Loop:**  
+  Python Engine memvalidasi integritas mekanis dan tekstual. Namun, evaluasi kesesuaian makna ilmiah yang mendalam (*semantic fit*) atas apakah sebuah premis riset benar-benar memvalidasi kesimpulan tetap mengandalkan agen penalaran AI dan **tetap membutuhkan verifikasi akhir oleh pakar manusia (*human review*)** sebelum naskah dipublikasikan secara akademik.

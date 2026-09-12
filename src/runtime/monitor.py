@@ -18,11 +18,12 @@ from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, Ta
 from src.core.paths import get_paths
 from src.runtime.bootstrap import health_check
 from src.runtime.progress import read_progress, record_progress
-from src.schemas.claim import Claim
+from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project
 from src.schemas.source import Source
+from src.tools.verification_tool import VerificationEngine
 from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
 from src.workflows.gates import AcademicGateError
 
@@ -290,6 +291,10 @@ class MonitorHandler(BaseHTTPRequestHandler):
             evidence = [Evidence.model_validate(x) for x in payload.get("evidence", [])]
             sources = [Source.model_validate(x) for x in payload.get("sources", [])]
             outline = Outline.model_validate(payload["outline"]) if payload.get("outline") else None
+            semantic_reviews = [
+                SemanticReview.model_validate(x)
+                for x in payload.get("semantic_reviews", [])
+            ]
         except Exception as exc:  # noqa: BLE001 - structured failure, never a dropped connection
             self._json(400, {"success": False, "error_code": "INVALID_REQUEST", "error": str(exc)})
             return
@@ -301,6 +306,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 evidence=evidence,
                 sources=sources,
                 outline=outline,
+                semantic_reviews=semantic_reviews,
+                verification_engine=VerificationEngine(),
             )
         )
         record_progress("academic", "success" if response.success else "failed", message=response.error_message or "Academic workflow completed")

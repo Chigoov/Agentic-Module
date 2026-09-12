@@ -1,6 +1,33 @@
 # CARA CEPAT UNTUK ORANG AWAM
 ## AUTONOMI AGENTIC ILMIAH
 
+## 0. Cara Cepat dengan Perintah `aai` (Windows)
+
+Di terminal PowerShell / CMD di folder `DATA BASE`, Anda bisa langsung menggunakan perintah pendek `aai.bat`:
+
+* **Setelah clone (cek sistem):**
+  ```cmd
+  aai.bat check
+  ```
+* **Buka live progress (otomatis menyalakan monitor):**
+  ```cmd
+  aai.bat open
+  ```
+* **Jalankan workflow akademik:**
+  ```cmd
+  aai.bat run input_edjust_mini.json
+  ```
+* **Lihat riwayat run:**
+  ```cmd
+  aai.bat runs input_edjust_mini.json
+  ```
+* **Ekspor bundle (.zip):**
+  ```cmd
+  aai.bat bundle input_edjust_mini.json
+  ```
+
+---
+
 ## 1. Menyalakan Monitor
 
 Double-click file ini:

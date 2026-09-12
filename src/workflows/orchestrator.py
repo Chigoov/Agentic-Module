@@ -5,6 +5,8 @@ It wires completed stages without owning their business logic.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from src.agents.audit import CitationAuditAgent, CitationAuditRequest, FactAuditAgent, FactAuditRequest
@@ -13,7 +15,7 @@ from src.agents.outline import OutlineAgent, OutlineRequest
 from src.agents.synthesis import SynthesisAgent, SynthesisRequest
 from src.agents.writer import WriterAgent, WriterRequest
 from src.schemas.citation import ReferenceList
-from src.schemas.claim import Claim
+from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project
@@ -30,6 +32,8 @@ class OrchestratorRequest(AgentRequest):
     evidence: list[Evidence] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
     outline: Outline | None = None
+    semantic_reviews: list[SemanticReview] = Field(default_factory=list)
+    verification_engine: Any = None
 
 
 class OrchestratorResponse(AgentResponse):
@@ -121,8 +125,26 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
         citation = CitationAuditAgent().execute(
             CitationAuditRequest(project=request.project, draft=writer_response.draft, sources=request.sources)
         )
-        fact = FactAuditAgent().execute(FactAuditRequest(project=request.project, claims=request.claims))
+        fact = FactAuditAgent().execute(
+            FactAuditRequest(
+                project=request.project,
+                claims=request.claims,
+                evidence=request.evidence,
+                sources=request.sources,
+                semantic_reviews=request.semantic_reviews,
+                verification_engine=request.verification_engine,
+            )
+        )
         stages.extend(["citation_audit", "fact_audit"])
+
+        rejection_msg: str | None = None
+        if not (citation.passed and fact.passed):
+            reasons: list[str] = []
+            if not citation.passed:
+                reasons.append("Citation audit failed: " + "; ".join(citation.orphan_citations or ["internal tokens or orphans"]))
+            if not fact.passed:
+                reasons.append("Fact audit failed: " + "; ".join(fact.rejection_reasons or fact.unsupported_claims or ["unsupported claims"]))
+            rejection_msg = "; ".join(reasons)
 
         return OrchestratorResponse(
             success=citation.passed and fact.passed,
@@ -132,5 +154,5 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
             reference_list=writer_response.reference_list,
             citation_audit_passed=citation.passed,
             fact_audit_passed=fact.passed,
-            error_message=None if citation.passed and fact.passed else "Audit failed",
+            error_message=rejection_msg,
         )

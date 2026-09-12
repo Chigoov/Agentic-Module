@@ -15,6 +15,8 @@ is the boundary that prevents fabricated content from reaching the draft.
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from enum import IntEnum, StrEnum
 
 from pydantic import Field
@@ -26,6 +28,9 @@ __all__ = [
     "ClaimImportance",
     "ClaimStatus",
     "SupportLevel",
+    "SemanticDecision",
+    "SemanticReview",
+    "requires_semantic_review",
     "Claim",
     "MIN_CONFIDENCE",
     "MAX_CONFIDENCE",
@@ -33,6 +38,108 @@ __all__ = [
 
 MIN_CONFIDENCE = 0.0
 MAX_CONFIDENCE = 1.0
+
+
+class SemanticDecision(StrEnum):
+    """Semantic evaluation decision produced by an AI reviewer."""
+
+    SUPPORTED = "SUPPORTED"
+    PARTIALLY_SUPPORTED = "PARTIALLY_SUPPORTED"
+    REFUTED = "REFUTED"
+    NEEDS_HUMAN_REVIEW = "NEEDS_HUMAN_REVIEW"
+    NOT_RUN = "NOT_RUN"
+
+
+class SemanticReview(BaseRecord):
+    """Structured record of external semantic review assessing claim-evidence fit.
+
+    Specification anchors:
+      * Anti-hallucination boundary: AI agent performs semantic evaluation;
+        Python engine validates and audits.
+      * Tahap 2: claim_id, decision, reason, evidence_id, source_id,
+        evidence_excerpt, location, reviewer/method, timestamp.
+    """
+
+    id_prefix: str = Field(default="rev", exclude=True, repr=False)
+
+    claim_id: str
+    decision: SemanticDecision = SemanticDecision.NEEDS_HUMAN_REVIEW
+    reason: str = Field(default="", description="Short rationale for the semantic assessment")
+    evidence_id: str | None = None
+    source_id: str | None = None
+    evidence_excerpt: str | None = None
+    location: str | None = None
+    reviewer: str = "antigravity_agent"
+    method: str = "semantic_evaluation"
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+CAUSAL_KEYWORDS = frozenset({
+    "sebab", "menyebabkan", "disebabkan", "mengakibatkan", "karena",
+    "causes", "caused", "causing", "leads to", "leading to", "due to",
+})
+
+EFFECTIVENESS_KEYWORDS = frozenset({
+    "efektif", "efektivitas", "berhasil", "keberhasilan",
+    "effective", "effectiveness", "efficacy",
+})
+
+DIRECTION_KEYWORDS = frozenset({
+    "meningkat", "meningkatkan", "peningkatan", "menurun", "menurunkan", "penurunan",
+    "reduksi", "mereduksi", "bertambah", "berkurang",
+    "increases", "increased", "increasing", "decreases", "decreased", "decreasing",
+    "reduces", "reduced", "reducing", "reduction",
+})
+
+MECHANISM_KEYWORDS = frozenset({
+    "mekanisme", "memediasi", "mediasi", "memoderasi", "moderasi", "jalur",
+    "mechanism", "mediates", "mediated", "moderates", "moderated", "pathway",
+})
+
+ABSOLUTE_KEYWORDS = frozenset({
+    "membuktikan", "terbukti", "menjamin", "terjamin", "mencegah", "pencegahan", "memastikan", "selalu", "pasti",
+    "proves", "proven", "guarantees", "guaranteed", "prevents", "preventing", "prevented", "ensures",
+})
+
+STATISTICAL_PATTERN = re.compile(
+    r"\d+\.?\d*%?|\b(?:p\s*[<=<>]|ci\s*=|n\s*=|f\s*=|t\s*=|\d+\s*persen|persen|percent|percentage)\b",
+    re.IGNORECASE,
+)
+
+
+def requires_semantic_review(claim: Claim) -> bool:
+    """Return True if a claim requires mandatory external semantic review.
+
+    Mandatory if any of:
+      * claim importance is HIGH or CRITICAL;
+      * contains numbers, percentage, or statistical figures;
+      * asserts causality;
+      * asserts effectiveness;
+      * asserts increase or decrease (directional change);
+      * discusses a mechanism;
+      * uses absolute assertion words.
+    """
+    if claim.importance >= ClaimImportance.HIGH:
+        return True
+
+    text = claim.claim_text.lower()
+
+    if STATISTICAL_PATTERN.search(text):
+        return True
+
+    words = set(re.findall(r"[a-z0-9_]+", text))
+    if any(k in words for k in CAUSAL_KEYWORDS) or any(k in text for k in ("leads to", "leading to", "due to")):
+        return True
+    if any(k in words for k in EFFECTIVENESS_KEYWORDS):
+        return True
+    if any(k in words for k in DIRECTION_KEYWORDS):
+        return True
+    if any(k in words for k in MECHANISM_KEYWORDS):
+        return True
+    if any(k in words for k in ABSOLUTE_KEYWORDS):
+        return True
+
+    return False
 
 
 class ClaimImportance(IntEnum):
@@ -139,6 +246,7 @@ class Claim(BaseRecord):
     required_source_count: int = Field(default=1, ge=1)
     qualifier: str | None = None
     section_hint: str | None = None
+    semantic_review: SemanticReview | None = None
 
     def model_post_init(self, _context: object) -> None:
         super().model_post_init(_context)
@@ -153,6 +261,11 @@ class Claim(BaseRecord):
     def is_important(self) -> bool:
         """Important claims must be auditable (SYSTEM_RULES.md §F.38)."""
         return self.importance >= ClaimImportance.HIGH
+
+    @property
+    def requires_semantic_review(self) -> bool:
+        """Whether this claim requires mandatory external semantic review."""
+        return requires_semantic_review(self)
 
     @property
     def has_conflict(self) -> bool:
