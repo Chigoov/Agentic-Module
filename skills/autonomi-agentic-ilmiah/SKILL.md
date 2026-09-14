@@ -86,7 +86,7 @@ Jalankan eksekusi melalui perintah launcher:
 .\aai.bat run input_project.json
 ```
 Repositori akan secara deterministik menjalankan:
-`synthesis` ➔ `outline` ➔ `writing` ➔ `citation_audit` ➔ `fact_audit` ➔ `docx_generation`.
+`synthesis` ➔ `outline` ➔ `writing` ➔ `humanizer` ➔ `citation_audit` ➔ `fact_audit` ➔ `docx_generation`.
 
 ### Langkah 5: Pembacaan Wajib Audit Sitasi, Audit Fakta, & Run Trail
 Agen **DILARANG menyatakan tugas berhasil sebelum memeriksa berkas audit**:
@@ -141,7 +141,26 @@ Pengguna dan AI agent dapat menggunakan shortcut launcher `.\aai.bat` (atau `./a
 
 ---
 
-## 6. Batasan Sistem dan Keterbukaan Ilmiah (Honest Reporting)
+## 6. Humanizer & Tata Letak Dokumen Normal
+
+Humanizer adalah tahap penyuntingan ringan sebelum DOCX final. Tujuannya membuat naskah terasa seperti tulisan mahasiswa yang rapi, bukan seperti jawaban AI yang terlalu licin. Humanizer **tidak boleh** menambah fakta, data, kutipan, DOI, halaman, sumber, atau klaim baru.
+
+Aturan gaya:
+* Gunakan bahasa Indonesia yang sederhana, natural, dan akademik secukupnya.
+* Hindari pembuka template seperti "di era globalisasi", "secara keseluruhan", "dapat disimpulkan bahwa", dan frasa terlalu umum seperti "sangat penting untuk diperhatikan" jika bisa dibuat lebih pendek.
+* Pakai kalimat sedang-pendek. Jangan memaksa semua paragraf terdengar formal atau bombastis.
+* Pertahankan penanda jujur seperti `[perlu data pendukung]` dan `[sumber belum lengkap]`.
+
+Aturan tabel, daftar, dan heading:
+* Tabel dipakai hanya untuk data, perbandingan, rubrik, jadwal, atau ringkasan yang memang lebih mudah dibaca dalam kolom.
+* Tabel normal mahasiswa biasanya ringkas: 2-4 kolom, judul kolom jelas, isi sel pendek, dan tidak berisi paragraf panjang.
+* Jangan membuat tabel hanya agar dokumen terlihat ramai. Jika satu paragraf lebih jelas, gunakan paragraf.
+* Bullet/nomor dipakai hanya untuk daftar nyata. Jangan mengubah seluruh esai menjadi poin-poin.
+* Heading dibuat singkat dan wajar, misalnya `Pendahuluan`, `Pembahasan`, `Kesimpulan`, bukan heading promosi atau terlalu dramatis.
+
+---
+
+## 7. Batasan Sistem dan Keterbukaan Ilmiah (Honest Reporting)
 
 * **Jangan Pernah Mengklaim "100% Anti-Halusinasi":**  
   Gunakan bahasa yang presisi dan jujur:

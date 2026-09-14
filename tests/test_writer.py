@@ -76,6 +76,46 @@ def test_writer_assembles_draft_from_writable_claims(tmp_path: Path) -> None:
     assert response.draft_path is not None
 
 
+def test_writer_humanizes_common_ai_filler_without_touching_citation(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    source = _source(title="Alpha", authors=["Smith, J."], year=2012)
+    claim = Claim(
+        claim_text=(
+            "Pada era globalisasi saat ini, pendidikan memiliki peranan yang "
+            "sangat penting dalam rangka meningkatkan pemahaman."
+        ),
+        status=ClaimStatus.SUPPORTED,
+        support_level=SupportLevel.STRONG,
+        confidence=0.9,
+        supporting_sources=[source.id],
+    )
+    outline = Outline(
+        project_id=project.id,
+        title="Document Title",
+        sections=[OutlineSection(title="Pendahuluan", claim_ids=[claim.id])],
+    )
+    response = WriterAgent().execute(
+        WriterRequest(project=project, outline=outline, claims=[claim], sources=[source])
+    )
+
+    assert "Pada era globalisasi saat ini" not in response.draft
+    assert "Pendidikan berperan penting untuk meningkatkan pemahaman (Smith, 2012)." in response.draft
+
+
+def test_writer_humanizer_does_not_rewrite_word_fragments(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    claim = _writable_claim()
+    claim.claim_text = "Penggunaan data memiliki peran yang sangat penting."
+    outline = Outline(
+        project_id=project.id,
+        title="Document Title",
+        sections=[OutlineSection(title="Pendahuluan", claim_ids=[claim.id])],
+    )
+    response = WriterAgent().execute(WriterRequest(project=project, outline=outline, claims=[claim]))
+
+    assert "Penggunaan data berperan penting." in response.draft
+
+
 def test_writer_excludes_non_writable_claims(tmp_path: Path) -> None:
     project = _project(tmp_path)
     writable = _writable_claim()

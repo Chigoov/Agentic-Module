@@ -100,6 +100,14 @@ Sebelum mengeksekusi tugas, agen harus mengenali mode lingkungannya:
   `search...`, atau `filecite` pada output final.
 - Ubah semua sumber terverifikasi menjadi sitasi dalam teks APA 7.
 - Tambahkan daftar pustaka APA 7.
+- Jalankan humanizer sebelum DOCX final: sederhanakan kalimat, hapus frasa AI yang terlalu umum, dan buat gaya terasa seperti tulisan mahasiswa yang rapi.
+- Humanizer tidak boleh menambah fakta, data, sumber, kutipan, DOI, nomor halaman, atau klaim baru.
+- Gunakan tata letak dokumen normal:
+  - heading singkat dan biasa;
+  - paragraf sebagai bentuk utama untuk esai;
+  - bullet/nomor hanya untuk daftar nyata;
+  - tabel hanya untuk data, perbandingan, rubrik, jadwal, atau ringkasan yang lebih jelas dalam kolom;
+  - tabel biasanya 2-4 kolom, isi sel pendek, dan tidak berisi paragraf panjang.
 - Untuk setiap sumber data, sumber hukum, dan artikel ilmiah, tampilkan:
   nama sumber, tahun, judul, link/DOI jika ada, serta halaman/bagian jika ada.
 - Jika metadata sumber belum lengkap, tulis `[sumber belum lengkap]`.

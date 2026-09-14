@@ -14,10 +14,14 @@ is excluded and reported — never paraphrased into prose to paper over a gap.
 Prose enrichment (turning the skeleton into flowing academic paragraphs) is
 deferred to the Model Router, which remains ``PENDING_CONFIGURATION``; the agent
 therefore never invents content (AGENT_CONSTITUTION §24).
+
+A tiny deterministic humanizer removes common AI filler without adding claims,
+sources, citations, or evidence.
 """
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 from pydantic import Field
@@ -41,6 +45,24 @@ __all__ = [
     "WriterResponse",
     "WriterAgent",
 ]
+
+
+_HUMANIZER_PREFIXES: tuple[str, ...] = (
+    "Pada era globalisasi saat ini, ",
+    "Di era globalisasi saat ini, ",
+    "Secara umum, ",
+    "Secara keseluruhan, ",
+    "Dapat disimpulkan bahwa ",
+    "Hal ini menunjukkan bahwa ",
+)
+
+_HUMANIZER_PHRASES: tuple[tuple[str, str], ...] = (
+    ("memiliki peranan yang sangat penting", "berperan penting"),
+    ("memiliki peran yang sangat penting", "berperan penting"),
+    ("sangat penting untuk diperhatikan", "penting diperhatikan"),
+    ("dalam rangka", "untuk"),
+    ("guna", "untuk"),
+)
 
 
 class WriterRequest(AgentRequest):
@@ -176,7 +198,7 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             claim = claim_by_id.get(claim_id)
             if claim is None:
                 continue
-            statement = claim.claim_text
+            statement = WriterAgent._humanize_statement(claim.claim_text)
             citations = WriterAgent._citations_for(claim, evidence_by_claim, source_by_id)
             has_dot = statement.endswith(".")
             if has_dot and citations:
@@ -203,6 +225,26 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
                 lines.append("")
         for subsection in section.subsections:
             WriterAgent._render_section(subsection, lines, claim_by_id, evidence_by_claim, source_by_id)
+
+    @staticmethod
+    def _humanize_statement(statement: str) -> str:
+        """Trim generic AI-ish filler while preserving the claim's substance."""
+        cleaned = " ".join(statement.strip().split())
+        changed = True
+        while changed:
+            changed = False
+            lowered = cleaned.lower()
+            for prefix in _HUMANIZER_PREFIXES:
+                if lowered.startswith(prefix.lower()):
+                    cleaned = cleaned[len(prefix) :].lstrip()
+                    changed = True
+                    break
+        for old, new in _HUMANIZER_PHRASES:
+            cleaned = re.sub(rf"\b{re.escape(old)}\b", new, cleaned, flags=re.IGNORECASE)
+        if len(cleaned) > 1 and cleaned[0].islower() and not cleaned[1].isupper():
+            return cleaned[:1].upper() + cleaned[1:]
+        return cleaned or statement.strip()
+
     @staticmethod
     def _citations_for(
         claim: Claim,

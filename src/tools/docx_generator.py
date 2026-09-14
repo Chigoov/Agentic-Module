@@ -73,17 +73,26 @@ class DocxGenerationTool(BaseTool[DocxGenerationRequest, DocxGenerationResponse]
         # is supplied, the DOCX appends its own References heading, so the
         # draft's copy is skipped here to avoid a duplicated bibliography.
         in_draft_references = False
-        for raw in text.splitlines():
+        lines = text.splitlines()
+        index = 0
+        while index < len(lines):
+            raw = lines[index]
             line = raw.strip()
             if not line:
+                index += 1
                 continue
             if line.startswith("## References"):
                 in_draft_references = True
+                index += 1
                 continue
             if in_draft_references:
                 if line.startswith("- "):
+                    index += 1
                     continue  # draft bibliography bullet; DOCX adds its own
                 in_draft_references = False
+            if DocxGenerationTool._is_table_start(lines, index):
+                index = DocxGenerationTool._add_markdown_table(doc, lines, index)
+                continue
             if line.startswith("# "):
                 doc.add_heading(line[2:].strip(), level=0)
             elif line.startswith("## "):
@@ -95,3 +104,48 @@ class DocxGenerationTool(BaseTool[DocxGenerationRequest, DocxGenerationResponse]
                 paragraph.style = "Quote"
             else:
                 doc.add_paragraph(line)
+            index += 1
+
+    @staticmethod
+    def _is_table_start(lines: list[str], index: int) -> bool:
+        return (
+            index + 1 < len(lines)
+            and DocxGenerationTool._is_table_row(lines[index])
+            and DocxGenerationTool._is_separator_row(lines[index + 1])
+        )
+
+    @staticmethod
+    def _add_markdown_table(doc: Document, lines: list[str], index: int) -> int:
+        header = DocxGenerationTool._split_table_row(lines[index])
+        table = doc.add_table(rows=1, cols=len(header))
+        table.style = "Table Grid"
+        for cell, value in zip(table.rows[0].cells, header):
+            cell.text = value
+        index += 2
+        while index < len(lines) and DocxGenerationTool._is_table_row(lines[index]):
+            values = DocxGenerationTool._split_table_row(lines[index])
+            row = table.add_row().cells
+            for column, cell in enumerate(row):
+                cell.text = values[column] if column < len(values) else ""
+            index += 1
+        return index
+
+    @staticmethod
+    def _is_table_row(line: str) -> bool:
+        stripped = line.strip()
+        return stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2
+
+    @staticmethod
+    def _is_separator_row(line: str) -> bool:
+        cells = DocxGenerationTool._split_table_row(line)
+        if not cells:
+            return False
+        for cell in cells:
+            marker = cell.strip().replace(":", "")
+            if len(marker) < 3 or set(marker) != {"-"}:
+                return False
+        return True
+
+    @staticmethod
+    def _split_table_row(line: str) -> list[str]:
+        return [cell.strip() for cell in line.strip().strip("|").split("|")]

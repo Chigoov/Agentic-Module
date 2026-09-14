@@ -51,6 +51,8 @@ python -m src export-bundle --input-json path\to\input.json --run-id <run_id>
 - For every data source, legal source, and scientific article, report the source name, year, title, link/DOI when available, and page/section when available.
 - Every final academic output must be reviewed and verified by a human expert before publication or submission.
 - Never finalize academic output (SourceState.APPROVED or final DOCX) if sources have not been verified against real bibliographic databases (Crossref/PubMed/etc.).
+- Run the humanizer pass before final DOCX: keep Indonesian prose simple, natural, and student-like; remove generic AI filler without adding facts, citations, sources, or evidence.
+- Use normal student document layout: short headings, ordinary paragraphs, bullets only for real lists, and tables only for comparisons/data/rubrics. Keep tables compact with clear headers, usually 2-4 columns, and avoid long paragraphs inside cells.
 - Check the command exit code and parse stdout as JSON when the command returns JSON.
 - Run `python -m pytest -q --tb=short` after code changes.
 - Run `python -m src check` before reporting completion.

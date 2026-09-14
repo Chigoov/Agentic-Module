@@ -53,3 +53,25 @@ def test_docx_generation_writes_readable_docx(tmp_path: Path) -> None:
     assert response.docx_path is not None
     doc = Document(response.docx_path)
     assert [p.text for p in doc.paragraphs if p.text][:2] == ["Title", "Findings"]
+
+
+def test_docx_generation_renders_markdown_table_as_word_table(tmp_path: Path) -> None:
+    response = DocxGenerationTool().execute(
+        DocxGenerationRequest(
+            project=_project(tmp_path),
+            draft=(
+                "# Title\n\n"
+                "| Aspek | Catatan |\n"
+                "|---|---|\n"
+                "| Bahasa | Sederhana |\n"
+            ),
+            citation_audit_passed=True,
+            fact_audit_passed=True,
+        )
+    )
+
+    assert response.success is True
+    assert response.docx_path is not None
+    table = Document(response.docx_path).tables[0]
+    assert table.cell(0, 0).text == "Aspek"
+    assert table.cell(1, 1).text == "Sederhana"

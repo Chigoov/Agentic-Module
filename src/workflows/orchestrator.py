@@ -109,6 +109,7 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
         if not writer_response.success:
             return OrchestratorResponse(success=False, error_message=writer_response.error_message, stages=stages)
         stages.append("writing")
+        stages.append("humanizer")
 
         # Output scan (audit A02): internal citation tokens and author-year
         # citations with no matching source must never reach export.

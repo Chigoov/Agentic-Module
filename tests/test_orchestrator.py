@@ -50,7 +50,7 @@ def test_orchestrator_writes_and_audits_supported_claim(tmp_path: Path) -> None:
         )
     )
     assert response.success is True
-    assert response.stages == ["synthesis", "outline", "writing", "citation_audit", "fact_audit"]
+    assert response.stages == ["synthesis", "outline", "writing", "humanizer", "citation_audit", "fact_audit"]
     assert (project.directory / "draft.md").is_file()
     assert (project.directory / "citation_audit.json").is_file()
     assert (project.directory / "fact_audit.json").is_file()

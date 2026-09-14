@@ -24,13 +24,15 @@ Protokol ini diaktifkan saat pengguna meminta:
    Buat payload JSON (`sources`, `claims`, `evidence`, `outline`, `semantic_reviews`). Untuk klaim penting/konsekuensial (kausal, statistik, efektivitas), wajib sertakan bukti verbatim dan ulasan semantik lengkap dengan kutipan persis (*exact contiguous substring*).
 4. **Jalankan Alur AAI:**
    Jalankan `.\aai.bat run <input.json>` (atau `python -m src run-academic --input-json <input.json>`).
-5. **Wajib Periksa Berkas Audit:**
+5. **Humanizer Singkat:**
+   Pastikan draf akhir memakai bahasa Indonesia yang sederhana, natural, dan seperti tulisan mahasiswa yang rapi. Hapus frasa AI yang terlalu umum, tetapi jangan menambah fakta, data, sumber, kutipan, DOI, atau halaman.
+6. **Wajib Periksa Berkas Audit:**
    Sebelum menyatakan berhasil, agen wajib memeriksa:
    - `citation_audit.json` ➔ harus `"passed": true`.
    - `fact_audit.json` ➔ harus `"passed": true`.
    - Naskah akhir bebas dari token internal (`turn...`, `view...`, `search...`, `filecite`, `【...】`).
    - Berkas `final.docx` berhasil terbuat.
-6. **Perbaiki Input jika Gagal:**
+7. **Perbaiki Input jika Gagal:**
    Jika audit menolak (`passed: false`), baca alasan penolakan di `fact_audit.json`, lalu perbaiki input JSON. Dilarang memalsukan draf manual.
 
 ---
@@ -50,6 +52,7 @@ Protokol ini diaktifkan saat pengguna meminta:
 
 * Sistem deterministik ini menutup celah bypass yang diuji dan memverifikasi ulang sumber/kutipan.
 * **Jangan klaim "100% anti-halusinasi"**; penilaian kesesuaian makna ilmiah (*semantic fit*) tetap memerlukan tinjauan pakar manusia (*Human-in-the-loop*).
+* Tabel, bullet, dan heading harus terasa seperti dokumen mahasiswa normal: tabel hanya untuk data/perbandingan/rubrik, biasanya 2-4 kolom, isi sel pendek, heading singkat, dan bullet hanya untuk daftar nyata.
 
 Untuk dokumentasi lengkap, lihat:
 `skills/autonomi-agentic-ilmiah/SKILL.md`.
