@@ -1,30 +1,18 @@
-"""Model router and LLM capability definitions (Phase 1 stub).
+"""Model router and LLM capability definitions (Phase 1/2 + Bagian F).
 
 Specification anchors:
   * ARCHITECTURE.md §6 — ``ModelRouter`` belongs at the provider/routing
     layer, not inside agent business logic or the research-tools layer.
   * config/system.yaml — ``model_routing`` section with provider configs.
-
-The model router is how agents abstract away "which LLM" and instead request
-capabilities. The router selects a configured provider/model that satisfies
-the requirement.
-
-Capabilities
-------------
-The enumeration below is the *operational* vocabulary the router dispatches
-on (``fast_completion``, ``long_context``, ``structured_output``,
-``reasoning``, ``embedding``). ``ARCHITECTURE.md`` §6 lists *conceptual*
-capabilities (``PLANNING``, ``RESEARCH``, ``REASONING``, ``WRITING``,
-``AUDITING``). These are bridged through ``config.model_routing.capability_map``
-(conceptual → operational), so the two vocabularies stay coherent without
-breaking this contract.
-
-Phase 1 creates the capability vocabulary and the interface. Phase 2 wires
-real providers (Claude, GPT, Gemini) once API keys are configured.
+  * Bagian F: Capabilities routing, safe fallback (PENDING_CONFIGURATION),
+    never fabricate citations/evidence/DOIs.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import urllib.request
 from enum import StrEnum
 from typing import Any, ClassVar
 
@@ -63,27 +51,23 @@ class ModelCapability(StrEnum):
     #: Embedding generation for semantic search.
     EMBEDDING = "embedding"
 
+    #: Conceptual capabilities (ARCHITECTURE.md §6)
+    PLANNING = "planning"
+    RESEARCH = "research"
+    WRITING = "writing"
+    AUDITING = "auditing"
+
+
+_CONCEPTUAL_FALLBACK: dict[ModelCapability, ModelCapability] = {
+    ModelCapability.PLANNING: ModelCapability.REASONING,
+    ModelCapability.RESEARCH: ModelCapability.REASONING,
+    ModelCapability.WRITING: ModelCapability.FAST_COMPLETION,
+    ModelCapability.AUDITING: ModelCapability.STRUCTURED_OUTPUT,
+}
+
 
 class ModelRequest(ToolRequest):
-    """Input contract for an LLM call.
-
-    Attributes
-    ----------
-    capability:
-        Which capability the agent needs.
-    prompt:
-        User/system prompt text.
-    system_prompt:
-        Optional system-level instructions.
-    output_schema:
-        JSON schema when ``capability`` is ``STRUCTURED_OUTPUT``. Named
-        ``output_schema`` rather than ``schema`` because ``schema`` shadows a
-        reserved attribute on :class:`pydantic.BaseModel`.
-    temperature:
-        Sampling temperature. Lower = more deterministic.
-    max_tokens:
-        Maximum completion length.
-    """
+    """Input contract for an LLM call."""
 
     capability: ModelCapability
     prompt: str = Field(min_length=1)
@@ -94,19 +78,7 @@ class ModelRequest(ToolRequest):
 
 
 class ModelResponse(ToolResponse):
-    """Output contract for an LLM call.
-
-    Attributes
-    ----------
-    completion:
-        The generated text or structured output.
-    model_used:
-        Which provider/model actually served the request.
-    tokens_used:
-        Total token count (prompt + completion).
-    finish_reason:
-        Why the generation stopped (stop, length, error).
-    """
+    """Output contract for an LLM call."""
 
     completion: str | dict[str, Any] = ""
     model_used: str = ""
@@ -115,37 +87,13 @@ class ModelResponse(ToolResponse):
 
 
 class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
-    """Model router that dispatches LLM calls by capability.
-
-    Current implementation:
-        Resolves configured capability mappings and fails explicitly when the
-        provider client is not present yet. Without provider credentials it
-        remains PENDING_CONFIGURATION.
-
-    Notes
-    -----
-    A concrete provider client still needs to:
-    1. Read ``config.model_routing`` to find which provider serves the
-       requested capability.
-    2. Check that the provider's API key is present and status is not DISABLED.
-    3. Construct a provider-specific request (OpenAI, Anthropic, Google format).
-    4. Invoke the provider client, applying retries and backoff.
-    5. Return the unified :class:`ModelResponse` contract.
-    """
+    """Model router that dispatches LLM calls by capability."""
 
     response_model: ClassVar[type[ToolResponse]] = ModelResponse
     tool_name: ClassVar[str] = "model_router"
 
     def status(self) -> IntegrationStatus:
-        """Report the configured status, never claiming more than is proven.
-
-        The declared ``config.model_routing.status`` is the ceiling, but it is
-        downgraded to ``PENDING_CONFIGURATION`` whenever the prerequisites for
-        actually calling a model are absent (no provider selected, no capability
-        map, or no API key). This keeps SYSTEM_RULES.md §H.47-49 enforceable:
-        an integration cannot be reported as working just because a YAML file
-        says so.
-        """
+        """Report the configured status, never claiming more than is proven."""
         routing = get_config().model_routing
 
         declared = routing.status
@@ -158,10 +106,30 @@ class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
         return declared
 
     def _execute(self, request: ModelRequest) -> ModelResponse:
-        """Resolve the configured model and fail safely until a provider client exists."""
+        """Resolve the configured model and dispatch or fail safely."""
         routing = get_config().model_routing
         model = resolve_model_for_capability(request.capability, routing.capability_map)
         system_root = get_paths().system_root
+
+        if not model:
+            record_model_telemetry(
+                root=system_root,
+                path=system_root / "model_telemetry.jsonl",
+                capability=request.capability.value,
+                status="CAPABILITY_NOT_MAPPED",
+                model_used="",
+                error_code="CAPABILITY_NOT_MAPPED",
+            )
+            return ModelResponse.failure(
+                error_code="CAPABILITY_NOT_MAPPED",
+                error_message=f"No model mapped for capability '{request.capability.value}'",
+                model_used="",
+            )
+
+        provider = (routing.provider or "").lower()
+        if provider in {"openai", "generic_openai"}:
+            return self._call_openai_compatible(request, model, routing)
+
         record_model_telemetry(
             root=system_root,
             path=system_root / "model_telemetry.jsonl",
@@ -172,11 +140,85 @@ class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
         )
         return ModelResponse.failure(
             error_code="PROVIDER_CLIENT_NOT_IMPLEMENTED",
-            error_message="A provider/model is configured, but no provider client is implemented yet",
+            error_message=f"Provider client for '{routing.provider}' is not implemented yet",
             model_used=model or "",
         )
 
+    def _call_openai_compatible(
+        self, request: ModelRequest, model: str, routing: Any
+    ) -> ModelResponse:
+        system_root = get_paths().system_root
+        base_url = (routing.router_base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        url = f"{base_url}/chat/completions"
+        api_key = routing.api_key or os.environ.get("OPENAI_API_KEY", "")
+
+        messages: list[dict[str, str]] = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.prompt})
+
+        payload_dict: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+        }
+        if request.output_schema and request.capability == ModelCapability.STRUCTURED_OUTPUT:
+            payload_dict["response_format"] = {"type": "json_object"}
+
+        body_bytes = json.dumps(payload_dict).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "AutonomiAgenticIlmiah/1.0",
+        }
+        req = urllib.request.Request(url, data=body_bytes, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                resp_data = json.loads(resp.read().decode("utf-8"))
+                choice = (resp_data.get("choices") or [{}])[0]
+                message = choice.get("message") or {}
+                content = message.get("content") or ""
+                finish_reason = choice.get("finish_reason") or "stop"
+                tokens_used = (resp_data.get("usage") or {}).get("total_tokens") or 0
+
+                record_model_telemetry(
+                    root=system_root,
+                    path=system_root / "model_telemetry.jsonl",
+                    capability=request.capability.value,
+                    status="SUCCESS",
+                    model_used=model,
+                )
+                return ModelResponse(
+                    success=True,
+                    completion=content,
+                    model_used=model,
+                    tokens_used=tokens_used,
+                    finish_reason=finish_reason,
+                )
+        except Exception as exc:
+            record_model_telemetry(
+                root=system_root,
+                path=system_root / "model_telemetry.jsonl",
+                capability=request.capability.value,
+                status="MODEL_CALL_FAILED",
+                model_used=model,
+                error_code="MODEL_CALL_FAILED",
+            )
+            return ModelResponse.failure(
+                error_code="MODEL_CALL_FAILED",
+                error_message=f"Model call to {url} failed: {type(exc).__name__}: {exc}",
+                model_used=model,
+            )
+
 
 def resolve_model_for_capability(capability: ModelCapability, capability_map: dict[str, str]) -> str | None:
-    """Return the configured model for a capability, accepting enum names or values."""
-    return capability_map.get(capability.value) or capability_map.get(capability.name)
+    """Return the configured model for a capability, accepting enum names, values, or conceptual fallbacks."""
+    res = capability_map.get(capability.value) or capability_map.get(capability.name)
+    if res:
+        return res
+    fallback = _CONCEPTUAL_FALLBACK.get(capability)
+    if fallback:
+        return capability_map.get(fallback.value) or capability_map.get(fallback.name)
+    return None

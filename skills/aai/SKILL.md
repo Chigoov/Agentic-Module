@@ -24,12 +24,13 @@ Protokol ini diaktifkan saat pengguna meminta:
    Buat payload JSON (`sources`, `claims`, `evidence`, `outline`, `semantic_reviews`). Untuk klaim penting/konsekuensial (kausal, statistik, efektivitas), wajib sertakan bukti verbatim dan ulasan semantik lengkap dengan kutipan persis (*exact contiguous substring*).
 4. **Jalankan Alur AAI:**
    Jalankan `.\aai.bat run <input.json>` (atau `python -m src run-academic --input-json <input.json>`).
-5. **Humanizer Singkat:**
-   Pastikan draf akhir memakai bahasa Indonesia yang sederhana, natural, dan seperti tulisan mahasiswa yang rapi. Hapus frasa AI yang terlalu umum, tetapi jangan menambah fakta, data, sumber, kutipan, DOI, atau halaman.
+5. **Humanizer & Output Guard (`human-doc-output-guard`):**
+   Terapkan kebijakan `human-doc-output-guard`. Pastikan draf akhir memakai bahasa Indonesia yang sederhana, natural, dan seperti tulisan mahasiswa yang rapi. Hindari frasa AI klise ("secara komprehensif", "dalam konteks ini", "penting untuk digarisbawahi", "berdasarkan uraian di atas"), jangan menambah bagian/tabel tak diminta, dan jangan menambah fakta, data, sumber, kutipan, DOI, atau halaman rekaan.
 6. **Wajib Periksa Berkas Audit:**
    Sebelum menyatakan berhasil, agen wajib memeriksa:
    - `citation_audit.json` ➔ harus `"passed": true`.
    - `fact_audit.json` ➔ harus `"passed": true`.
+   - `human_style_audit.json` ➔ harus `"passed": true` (bebas dari tambahan tak diminta, frasa klise AI, dan tabel berlebihan).
    - Naskah akhir bebas dari token internal (`turn...`, `view...`, `search...`, `filecite`, `【...】`).
    - Berkas `final.docx` berhasil terbuat.
 7. **Perbaiki Input jika Gagal:**
@@ -55,4 +56,5 @@ Protokol ini diaktifkan saat pengguna meminta:
 * Tabel, bullet, dan heading harus terasa seperti dokumen mahasiswa normal: tabel hanya untuk data/perbandingan/rubrik, biasanya 2-4 kolom, isi sel pendek, heading singkat, dan bullet hanya untuk daftar nyata.
 
 Untuk dokumentasi lengkap, lihat:
-`skills/autonomi-agentic-ilmiah/SKILL.md`.
+- `skills/autonomi-agentic-ilmiah/SKILL.md`
+- `skills/human-doc-output-guard/SKILL.md`

@@ -28,7 +28,10 @@ from src.schemas.evidence import (
     Evidence,
     EvidenceRelationship,
     EvidenceStrength,
+    EvidenceType,
+    ReadingDepth,
 )
+from src.workflows.contradiction import detect_contradictions
 
 __all__ = [
     "EvaluationResult",
@@ -36,6 +39,8 @@ __all__ = [
     "classify_relationship",
     "compute_support_level",
     "calibrate_confidence",
+    "_get_evidence_type",
+    "_effective_strength",
 ]
 
 #: Weight of each evidence strength when aggregating into a support level.
@@ -75,6 +80,32 @@ def classify_relationship(evidence: Evidence) -> EvidenceRelationship:
     return evidence.relationship
 
 
+def _get_evidence_type(evidence: Evidence) -> EvidenceType:
+    """Return effective EvidenceType, treating pre-upgrade unclassified records as DIRECT."""
+    if "evidence_type" not in getattr(evidence, "model_fields_set", set()):
+        return EvidenceType.DIRECT
+    return evidence.evidence_type
+
+
+def _effective_strength(evidence: Evidence) -> EvidenceStrength:
+    """Compute effective strength accounting for EvidenceType (Req 12)."""
+    ladder = [
+        EvidenceStrength.WEAK,
+        EvidenceStrength.MODERATE,
+        EvidenceStrength.STRONG,
+        EvidenceStrength.DEFINITIVE,
+    ]
+    etype = _get_evidence_type(evidence)
+    base = evidence.max_claim_strength()
+    index = ladder.index(base)
+
+    if etype == EvidenceType.BACKGROUND:
+        return EvidenceStrength.WEAK
+    if etype in (EvidenceType.THEORETICAL, EvidenceType.FUNCTIONAL_EQUIVALENT):
+        return ladder[max(0, index - 1)]
+    return base
+
+
 def compute_support_level(supporting: list[Evidence]) -> SupportLevel:
     """Aggregate supporting evidence into a single :class:`SupportLevel`.
 
@@ -91,19 +122,38 @@ def compute_support_level(supporting: list[Evidence]) -> SupportLevel:
     A partially-supporting piece is already degraded one notch by
     :meth:`Evidence.max_claim_strength` (00_MASTER_INSTRUCTION.md §19).
     """
-    if not supporting:
+    valid_supporting = [
+        e for e in supporting if _get_evidence_type(e) != EvidenceType.NOT_SUPPORTED
+    ]
+    if not valid_supporting:
         return SupportLevel.NONE
 
-    best_weight = max(_STRENGTH_WEIGHT[e.max_claim_strength()] for e in supporting)
-    distinct_sources = {e.source_id for e in supporting}
+    best_weight = max(_STRENGTH_WEIGHT[_effective_strength(e)] for e in valid_supporting)
+    distinct_sources = {e.source_id for e in valid_supporting}
 
     if best_weight >= _STRENGTH_WEIGHT[EvidenceStrength.DEFINITIVE]:
-        return SupportLevel.STRONG
-    if best_weight >= _STRENGTH_WEIGHT[EvidenceStrength.STRONG]:
-        return SupportLevel.STRONG if len(distinct_sources) >= 2 else SupportLevel.MODERATE
-    if best_weight >= _STRENGTH_WEIGHT[EvidenceStrength.MODERATE]:
+        tentative = SupportLevel.STRONG
+    elif best_weight >= _STRENGTH_WEIGHT[EvidenceStrength.STRONG]:
+        tentative = SupportLevel.STRONG if len(distinct_sources) >= 2 else SupportLevel.MODERATE
+    elif best_weight >= _STRENGTH_WEIGHT[EvidenceStrength.MODERATE]:
+        tentative = SupportLevel.MODERATE
+    else:
+        tentative = SupportLevel.WEAK
+
+    all_indirect = all(
+        _get_evidence_type(e)
+        in (
+            EvidenceType.PARTIAL,
+            EvidenceType.THEORETICAL,
+            EvidenceType.FUNCTIONAL_EQUIVALENT,
+            EvidenceType.BACKGROUND,
+        )
+        for e in valid_supporting
+    )
+    if all_indirect and tentative == SupportLevel.STRONG:
         return SupportLevel.MODERATE
-    return SupportLevel.WEAK
+
+    return tentative
 
 
 def calibrate_confidence(
@@ -119,7 +169,10 @@ def calibrate_confidence(
     strength of the best evidence, and it is reduced (never raised) by unmet
     source requirements, partial support, and contradiction.
     """
-    if not supporting:
+    valid_supporting = [
+        e for e in supporting if _get_evidence_type(e) != EvidenceType.NOT_SUPPORTED
+    ]
+    if not valid_supporting:
         return 0.0
 
     # Base strength of the strongest warrant.
@@ -132,7 +185,7 @@ def calibrate_confidence(
     confidence = strength_to_ceiling[support_level]
 
     # Distinct-source requirement (SYSTEM_RULES §C.20 / AGENT_CONSTITUTION §17).
-    distinct_sources = {evidence.source_id for evidence in supporting}
+    distinct_sources = {evidence.source_id for evidence in valid_supporting}
     unmet = claim.unmet_source_requirement()
     if claim.required_source_count > 0:
         source_ratio = len(distinct_sources) / claim.required_source_count
@@ -143,15 +196,32 @@ def calibrate_confidence(
     # Partial support is weaker than full support.
     fully_supporting = [
         evidence
-        for evidence in supporting
+        for evidence in valid_supporting
         if evidence.relationship is EvidenceRelationship.SUPPORTS
     ]
     if not fully_supporting:
         confidence *= 0.7
 
+    # Multipliers (Req 12.5, Property 9)
+    multipliers = {
+        EvidenceType.DIRECT: 1.0,
+        EvidenceType.PARTIAL: 0.8,
+        EvidenceType.FUNCTIONAL_EQUIVALENT: 0.7,
+        EvidenceType.THEORETICAL: 0.6,
+        EvidenceType.BACKGROUND: 0.3,
+    }
+    best_mult = max(multipliers.get(_get_evidence_type(e), 1.0) for e in valid_supporting)
+    confidence *= best_mult
+
     # Contradiction materially reduces confidence (never hidden; §14).
     if contradicting:
         confidence *= 0.4
+
+    # ReadingDepth caps (Req 2.5, Property 4)
+    if all(e.reading_depth == ReadingDepth.ABSTRACT_ONLY for e in valid_supporting):
+        confidence = min(confidence, 0.5)
+    elif all(e.reading_depth in (ReadingDepth.METADATA_ONLY, ReadingDepth.UNAVAILABLE) for e in valid_supporting):
+        confidence = min(confidence, 0.2)
 
     return round(max(0.0, min(1.0, confidence)), 3)
 
@@ -181,7 +251,12 @@ def evaluate_claim(
         The recommended status, support level, confidence, and reason.
     """
     relevant = [e for e in evidence if e.relationship is not EvidenceRelationship.IRRELEVANT]
-    supporting = [e for e in relevant if e.relationship in SUPPORTING_RELATIONSHIPS]
+    supporting = [
+        e
+        for e in relevant
+        if e.relationship in SUPPORTING_RELATIONSHIPS
+        and _get_evidence_type(e) != EvidenceType.NOT_SUPPORTED
+    ]
     contradicting = [e for e in relevant if e.relationship is EvidenceRelationship.CONTRADICTS]
 
     support_level = compute_support_level(supporting)
@@ -200,14 +275,22 @@ def evaluate_claim(
 
     # Order matters: conflict and refutation dominate, then sufficiency.
     if contradicting and supporting:
+        report = detect_contradictions(claim, evidence)
+        if report.conflict_severity:
+            reason = (
+                f"{len(supporting)} supporting vs {len(contradicting)} contradicting "
+                f"evidence (severity: {report.conflict_severity}); conflict disclosed, not hidden"
+            )
+        else:
+            reason = (
+                f"{len(supporting)} supporting vs {len(contradicting)} contradicting "
+                "evidence; conflict disclosed, not hidden"
+            )
         return EvaluationResult(
             status=ClaimStatus.CONFLICTED,
             support_level=support_level,
             confidence=confidence,
-            reason=(
-                f"{len(supporting)} supporting vs {len(contradicting)} contradicting "
-                "evidence; conflict disclosed, not hidden"
-            ),
+            reason=reason,
         )
 
     if contradicting and not supporting:

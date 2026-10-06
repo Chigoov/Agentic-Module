@@ -14,6 +14,7 @@ the most complete record and recording the merge in ``verification_notes``.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from src.schemas.source import Source, SourceType
@@ -25,13 +26,26 @@ __all__ = ["dedupe_key", "deduplicate"]
 def dedupe_key(source: Source) -> str:
     """Return a stable comparison key for a source.
 
-    DOI (normalized) is preferred as the strongest identity. When absent, the key
-    falls back to ``title | first-author | year`` using the normalized title so
-    punctuation/case differences do not split the same work.
+    Deduplication is deterministic:
+    1. DOI (normalized) is preferred as the strongest identity.
+    2. ISBN (clean 10/13 digits) is second for books without DOI.
+    3. Provider ID (provider + record ID) is third.
+    4. Fallback is normalized title | first-author | year.
     """
     doi = normalize_doi(source.doi)
     if doi:
         return f"doi:{doi}"
+
+    isbn = getattr(source, "isbn", None)
+    if isbn:
+        clean_isbn = re.sub(r"[^0-9X]", "", str(isbn).upper())
+        if len(clean_isbn) in {10, 13}:
+            return f"isbn:{clean_isbn}"
+
+    prov = getattr(source, "provider", None)
+    prov_id = getattr(source, "provider_record_id", None)
+    if prov and prov_id:
+        return f"provider:{prov}:{prov_id}"
 
     title = normalize_title(source.title)
     first_author = source.authors[0].strip().lower() if source.authors else ""

@@ -97,3 +97,78 @@ def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys, monkeypatch) ->
     assert out["success"] is True
     assert Path(out["draft_path"]).is_file()
     assert Path(out["docx_path"]).is_file()
+
+
+def test_cli_review_queue_inspect_and_resolve(tmp_path: Path, capsys) -> None:
+    project_dir = tmp_path / "rq_project"
+    project_dir.mkdir()
+    from src.schemas.review import ReviewItem, ReviewQueue
+    queue_file = project_dir / "review_queue.json"
+    item1 = ReviewItem(
+        id="rev_test_1",
+        item_type="audit",
+        item_id="clm_1",
+        severity="HIGH",
+        reason="Fact audit failed: claim clm_1: consequential claim has no semantic review record",
+        recommended_action="Review and resolve audit findings",
+    )
+    rq = ReviewQueue([item1])
+    rq.save(queue_file, root=project_dir)
+
+    # 1. Inspect
+    assert main(["review-queue", str(project_dir)]) == 0
+    out1 = json.loads(capsys.readouterr().out)
+    assert out1["success"] is True
+    assert out1["total_items"] == 1
+    assert out1["items"][0]["id"] == "rev_test_1"
+    assert out1["items"][0]["status"] == "PENDING"
+
+    # Mock fact_audit.json with assessment so resolve can create SemanticReview
+    fa_payload = {
+        "assessments": [
+            {
+                "claim_id": "clm_1",
+                "evidence_id": "evd_1",
+                "source_id": "src_1",
+                "evidence_text": "Sample text for clm 1",
+                "evidence_location": "abstract",
+            }
+        ]
+    }
+    (project_dir / "fact_audit.json").write_text(json.dumps(fa_payload), encoding="utf-8")
+
+    # 2. Resolve
+    assert main(["review-queue", str(project_dir), "--resolve", "rev_test_1", "--notes", "Verified by researcher"]) == 0
+    out2 = json.loads(capsys.readouterr().out)
+    assert out2["success"] is True
+    assert out2["resolved_item"]["status"] == "RESOLVED"
+    assert out2["resolved_item"]["resolution_notes"] == "Verified by researcher"
+    assert out2["semantic_review"] is not None
+    assert out2["semantic_review"]["claim_id"] == "clm_1"
+
+    # Verify semantic_reviews.json file created
+    sem_file = project_dir / "semantic_reviews.json"
+    assert sem_file.is_file()
+    sem_data = json.loads(sem_file.read_text(encoding="utf-8"))
+    assert len(sem_data) == 1
+    assert sem_data[0]["claim_id"] == "clm_1"
+
+
+def test_cli_finalize_blocks_on_critical_pending_item(tmp_path: Path, capsys) -> None:
+    project_dir = tmp_path / "fin_project"
+    project_dir.mkdir()
+    from src.schemas.review import ReviewItem, ReviewQueue
+    queue_file = project_dir / "review_queue.json"
+    item = ReviewItem(
+        id="rev_crit",
+        item_type="source",
+        item_id="src_crit",
+        severity="CRITICAL",
+        reason="Found 0 verified sources, minimum 2 required",
+        recommended_action="Broaden search",
+    )
+    ReviewQueue([item]).save(queue_file, root=project_dir)
+
+    assert main(["finalize", str(project_dir)]) == 1
+    err = capsys.readouterr().err
+    assert "critical review items remain pending" in err

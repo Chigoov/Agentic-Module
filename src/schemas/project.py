@@ -11,6 +11,7 @@ be inspected and migrated by a later one.
 
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from pathlib import Path
 
@@ -48,6 +49,10 @@ class ProjectArtifact(StrEnum):
     DRAFT = "draft.md"
     CITATION_AUDIT = "citation_audit.json"
     FACT_AUDIT = "fact_audit.json"
+    HUMAN_STYLE_AUDIT = "human_style_audit.json"
+    CITATION_MAP = "citation_map.json"
+    REVIEW_QUEUE = "review_queue.json"
+    SEMANTIC_REVIEWS = "semantic_reviews.json"
     FINAL_DOCX = "final.docx"
 
 
@@ -106,10 +111,83 @@ class Project(BaseRecord):
         """Project folder as a :class:`~pathlib.Path`."""
         return Path(self.path)
 
+    def source_path(self, filename: str | os.PathLike[str]) -> Path:
+        """Absolute, validated path for a source document (PDF, e-book, article).
+
+        Guaranteed to lie within <project_directory>/source_documents/.
+        Rejects path traversal, external absolute paths, and empty filenames.
+        """
+        from src.core.errors import PathSafetyError
+        from src.core.storage import ensure_within
+
+        raw_name = str(filename).strip()
+        if not raw_name or raw_name in {".", ".."}:
+            raise PathSafetyError("Filename cannot be empty or relative pointer", path=raw_name, root=str(self.directory))
+        if "\x00" in raw_name:
+            raise PathSafetyError("Filename cannot contain null byte", path=raw_name, root=str(self.directory))
+
+        target_dir = (self.directory / "source_documents").resolve()
+        return ensure_within(filename, target_dir)
+
+    def run_path(self, run_id: str, filename: str | os.PathLike[str] | None = None) -> Path:
+        """Absolute, validated path for an execution run directory or run file.
+
+        Guaranteed to lie within <project_directory>/runs/<run_id>/.
+        """
+        from src.core.errors import PathSafetyError
+        from src.core.storage import ensure_within
+
+        raw_run_id = str(run_id).strip()
+        if not raw_run_id or raw_run_id in {".", ".."}:
+            raise PathSafetyError("run_id cannot be empty or relative pointer", path=raw_run_id, root=str(self.directory))
+        if "/" in raw_run_id or "\\" in raw_run_id or ".." in raw_run_id or "\x00" in raw_run_id:
+            raise PathSafetyError(f"Invalid run_id: {run_id!r}", path=raw_run_id, root=str(self.directory))
+
+        runs_dir = (self.directory / "runs").resolve()
+        run_dir = ensure_within(raw_run_id, runs_dir)
+
+        if filename is None:
+            return run_dir
+
+        raw_file = str(filename).strip()
+        if not raw_file or raw_file in {".", ".."}:
+            raise PathSafetyError("Filename cannot be empty or relative pointer", path=raw_file, root=str(run_dir))
+        if "\x00" in raw_file:
+            raise PathSafetyError("Filename cannot contain null byte", path=raw_file, root=str(run_dir))
+
+        return ensure_within(filename, run_dir)
+
+    def export_path(self, filename: str | os.PathLike[str]) -> Path:
+        """Absolute, validated path for an export file (ZIP bundle, distribution copy).
+
+        Guaranteed to lie within <project_directory>/exports/.
+        """
+        from src.core.errors import PathSafetyError
+        from src.core.storage import ensure_within
+
+        raw_name = str(filename).strip()
+        if not raw_name or raw_name in {".", ".."}:
+            raise PathSafetyError("Filename cannot be empty or relative pointer", path=raw_name, root=str(self.directory))
+        if "\x00" in raw_name:
+            raise PathSafetyError("Filename cannot contain null byte", path=raw_name, root=str(self.directory))
+
+        exports_dir = (self.directory / "exports").resolve()
+        return ensure_within(filename, exports_dir)
+
     def artifact_path(self, artifact: ProjectArtifact | str) -> Path:
-        """Absolute path of a canonical artifact inside this project."""
-        filename = artifact.value if isinstance(artifact, ProjectArtifact) else artifact
-        return self.directory / filename
+        """Absolute, validated path of a canonical artifact inside this project."""
+        from src.core.errors import PathSafetyError
+        from src.core.storage import ensure_within
+
+        raw = artifact.value if isinstance(artifact, ProjectArtifact) else str(artifact)
+        raw_name = raw.strip()
+        if not raw_name or raw_name in {".", ".."}:
+            raise PathSafetyError("Artifact filename cannot be empty or relative pointer", path=raw_name, root=str(self.directory))
+        if "\x00" in raw_name:
+            raise PathSafetyError("Artifact filename cannot contain null byte", path=raw_name, root=str(self.directory))
+
+        proj_dir = self.directory.resolve()
+        return ensure_within(raw_name, proj_dir)
 
     def sync_task_state(self, state: TaskState, *, reason: str) -> None:
         """Mirror a task state change into the manifest with an audit entry."""

@@ -23,6 +23,7 @@ __all__ = [
     "ENV_SYSTEM_ROOT",
     "SPEC_FILES",
     "SUPPLEMENTARY_DOCS",
+    "RESERVED_WORKSPACE_NAMES",
     "PathResolutionError",
     "SystemPaths",
     "get_paths",
@@ -31,6 +32,27 @@ __all__ = [
 
 #: Name of the system root directory inside the workspace.
 SYSTEM_ROOT_DIRNAME = "DATA BASE"
+
+#: Reserved directories inside WORKSPACE_ROOT that must NEVER be treated as project workspaces.
+RESERVED_WORKSPACE_NAMES: frozenset[str] = frozenset({
+    SYSTEM_ROOT_DIRNAME.casefold(),
+    "scripts",
+    "downloaded_articles",
+    "cache",
+    "logs",
+    "state",
+    "runtime",
+    "config",
+    "database",
+    "dist",
+    "build",
+    "node_modules",
+    "src",
+    "tests",
+    "docs",
+    "prompts",
+    "_archive",
+})
 
 ENV_WORKSPACE_ROOT = "AUTONOMI_WORKSPACE_ROOT"
 ENV_SYSTEM_ROOT = "AUTONOMI_SYSTEM_ROOT"
@@ -232,43 +254,113 @@ class SystemPaths:
         """Advisory: supplementary docs missing from SYSTEM_ROOT (never a spec failure)."""
         return [name for name in SUPPLEMENTARY_DOCS if not (self.system_root / name).is_file()]
 
-    def project_workspaces(self) -> list[Path]:
-        """Project workspaces (e.g. ``TUGAS 1``) — every workspace dir except SYSTEM_ROOT."""
+    def project_workspaces(self, allowed_workspaces: Iterable[str] | None = None) -> list[Path]:
+        """Project workspaces (e.g. ``TUGAS 1``) — only valid workspaces, never system dirs."""
         if not self.workspace_root.is_dir():
             return []
-        found = [
-            entry
-            for entry in self.workspace_root.iterdir()
-            if entry.is_dir()
-            and entry.resolve() != self.system_root
-            and not entry.name.startswith((".", "_", "~"))
-        ]
+
+        allowed_set: set[str] | None = None
+        if allowed_workspaces is not None:
+            allowed_set = {ws.casefold() for ws in allowed_workspaces}
+
+        system_root_resolved = self.system_root.resolve()
+        found: list[Path] = []
+        for entry in self.workspace_root.iterdir():
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith((".", "_", "~")):
+                continue
+            name_lower = entry.name.casefold()
+            if name_lower in RESERVED_WORKSPACE_NAMES or name_lower == system_root_resolved.name.casefold():
+                continue
+            try:
+                resolved_entry = entry.resolve()
+            except (OSError, RuntimeError):
+                continue
+            if resolved_entry == system_root_resolved or self.is_inside_system_root(resolved_entry):
+                continue
+            if allowed_set is not None and name_lower not in allowed_set:
+                continue
+            found.append(entry)
         return sorted(found, key=lambda p: p.name.casefold())
 
-    def workspace_path(self, name: str) -> Path:
-        """Resolve a workspace by name, refusing anything outside WORKSPACE_ROOT."""
-        candidate = (self.workspace_root / name).resolve()
+    def workspace_path(self, name: str, allowed_workspaces: Iterable[str] | None = None) -> Path:
+        """Resolve a workspace by name, refusing anything outside WORKSPACE_ROOT or invalid."""
+        if not name or not str(name).strip():
+            raise PathResolutionError("Workspace name cannot be empty")
+        clean_name = str(name).strip()
+        if "/" in clean_name or "\\" in clean_name or ".." in clean_name:
+            raise PathResolutionError(f"Invalid workspace name (path separators/traversal forbidden): {name!r}")
+        if "\x00" in clean_name:
+            raise PathResolutionError(f"Invalid workspace name (null bytes forbidden): {name!r}")
+
+        candidate = (self.workspace_root / clean_name).resolve()
         if not self.is_inside_workspace(candidate):
             raise PathResolutionError(f"Workspace {name!r} escapes the workspace root: {candidate}")
-        if candidate == self.system_root:
+
+        system_root_resolved = self.system_root.resolve()
+        if candidate == system_root_resolved:
             raise PathResolutionError(
                 "SYSTEM_ROOT is not a project workspace (SYSTEM_RULES.md §A.2/§A.3)."
             )
+        if self.is_inside_workspace(system_root_resolved) and self.is_inside_system_root(candidate):
+            raise PathResolutionError(
+                "SYSTEM_ROOT is not a project workspace (SYSTEM_RULES.md §A.2/§A.3)."
+            )
+
+        name_lower = clean_name.casefold()
+        if name_lower in RESERVED_WORKSPACE_NAMES or name_lower == system_root_resolved.name.casefold():
+            raise PathResolutionError(
+                f"Directory {name!r} is a reserved system directory, not a project workspace."
+            )
+
+        if allowed_workspaces is not None:
+            allowed_set = {ws.casefold() for ws in allowed_workspaces}
+            if name_lower not in allowed_set:
+                raise PathResolutionError(
+                    f"Workspace {name!r} is not an allowed workspace. Allowed workspaces: {sorted(allowed_set)}"
+                )
+
         return candidate
 
     def is_inside_workspace(self, path: str | os.PathLike[str]) -> bool:
         try:
-            Path(path).resolve().relative_to(self.workspace_root)
-        except ValueError:
+            resolved = Path(path).resolve()
+            resolved.relative_to(self.workspace_root.resolve())
+            return True
+        except (ValueError, RuntimeError, OSError):
             return False
-        return True
 
     def is_inside_system_root(self, path: str | os.PathLike[str]) -> bool:
         try:
-            Path(path).resolve().relative_to(self.system_root)
-        except ValueError:
+            resolved = Path(path).resolve()
+            sys_root = self.system_root.resolve()
+            if resolved == sys_root:
+                return True
+            resolved.relative_to(sys_root)
+            # If workspace_root is a child of system_root (test layout),
+            # paths inside workspace_root are workspace paths, not system-internal.
+            try:
+                self.workspace_root.resolve().relative_to(sys_root)
+                if self.is_inside_workspace(resolved):
+                    return False
+            except ValueError:
+                pass
+            return True
+        except (ValueError, RuntimeError, OSError):
             return False
-        return True
+
+    def is_valid_project_path(self, path: str | os.PathLike[str]) -> bool:
+        """Check if path is inside workspace_root and NOT inside system_root."""
+        try:
+            resolved = Path(path).resolve()
+            if not self.is_inside_workspace(resolved):
+                return False
+            if self.is_inside_system_root(resolved):
+                return False
+            return True
+        except (ValueError, RuntimeError, OSError):
+            return False
 
     def relative(self, path: str | os.PathLike[str]) -> str:
         """Workspace-relative string for logs and reports (keeps logs portable)."""

@@ -76,6 +76,12 @@ class ResearchResponse(ToolResponse):
     query_used: str = ""
     request_url: str = ""
     raw_response_text: str = ""
+    http_status: int = 200
+
+    @property
+    def status_code(self) -> int:
+        """Alias for http_status for HTTP response compatibility."""
+        return self.http_status
 
 
 class ResearchTool(BaseTool[ResearchRequest, ResearchResponse]):
@@ -192,6 +198,8 @@ class ResearchTool(BaseTool[ResearchRequest, ResearchResponse]):
             request_url=request_url,
             raw_response_text=raw_text,
             status=self.status(),
+            http_status=200,
+            metadata={"http_status": 200, "status_code": 200},
         )
 
     # ------------------------------------------------------------------ hook

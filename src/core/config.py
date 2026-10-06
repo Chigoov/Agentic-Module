@@ -110,6 +110,7 @@ class ResearchSection(_Section):
 
 class ProjectsSection(_Section):
     default_workspace: str = "TUGAS 1"
+    allowed_workspaces: list[str] = Field(default_factory=lambda: ["TUGAS 1", "TUGAS 2"])
     allow_workspace_creation: bool = False
 
 

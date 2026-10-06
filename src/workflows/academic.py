@@ -6,12 +6,13 @@ from typing import Any
 
 from pydantic import Field
 
+from src.agents.audit import HumanStyleAuditAgent, HumanStyleAuditRequest
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
 from src.core.errors import HumanReviewRequired
 from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
-from src.schemas.project import Project
+from src.schemas.project import Project, ProjectArtifact
 from src.schemas.source import Source
 from src.tools.docx_generator import DocxGenerationRequest, DocxGenerationTool
 from src.workflows.audit_trail import AcademicRunAudit
@@ -65,6 +66,21 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
             input_path=request.input_path,
         )
 
+        # Load persisted semantic reviews if available
+        semantic_reviews = list(request.semantic_reviews)
+        sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
+        if sem_path.is_file():
+            try:
+                from src.core.storage import read_json
+                raw_sem = read_json(sem_path)
+                if isinstance(raw_sem, list):
+                    for item in raw_sem:
+                        sr = SemanticReview.model_validate(item)
+                        if not any(r.claim_id == sr.claim_id for r in semantic_reviews):
+                            semantic_reviews.append(sr)
+            except Exception:
+                pass
+
         try:
             orchestrated = OrchestratorAgent().execute(
                 OrchestratorRequest(
@@ -73,7 +89,7 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                     evidence=request.evidence,
                     sources=request.sources,
                     outline=request.outline,
-                    semantic_reviews=request.semantic_reviews,
+                    semantic_reviews=semantic_reviews,
                     verification_engine=request.verification_engine,
                 )
             )
@@ -96,6 +112,16 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 )
 
             stages = list(orchestrated.stages)
+
+            # Enforce human-doc-output-guard prior to document finalization
+            HumanStyleAuditAgent().execute(
+                HumanStyleAuditRequest(
+                    project=request.project,
+                    draft=orchestrated.draft,
+                    sources=request.sources,
+                )
+            )
+
             docx_path: str | None = None
             if request.generate_docx:
                 docx = DocxGenerationTool().execute(

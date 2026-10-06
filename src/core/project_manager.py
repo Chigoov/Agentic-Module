@@ -143,7 +143,23 @@ class ProjectManager:
             )
             workspace_path.mkdir(parents=True, exist_ok=True)
 
-        project_dir = workspace_path / resolved_name
+        project_dir = (workspace_path / resolved_name).resolve()
+
+        if self.paths.is_inside_system_root(project_dir):
+            raise ProjectError(
+                f"Refusing to create project inside SYSTEM_ROOT ({self.paths.system_root})",
+                workspace=resolved_workspace,
+                name=resolved_name,
+                path=str(project_dir),
+            )
+        if not self.paths.is_inside_workspace(project_dir):
+            raise ProjectError(
+                f"Project directory escapes workspace root: {project_dir}",
+                workspace=resolved_workspace,
+                name=resolved_name,
+                path=str(project_dir),
+            )
+
         manifest_file = project_dir / PROJECT_MANIFEST_FILENAME
 
         if manifest_file.is_file():
@@ -201,7 +217,7 @@ class ProjectManager:
         ProjectError
             When the manifest is missing or invalid.
         """
-        workspace_path = self._resolve_workspace(workspace)
+        workspace_path = self._resolve_workspace(workspace, check_allowed=False)
         project_dir = workspace_path / name
         manifest_file = project_dir / PROJECT_MANIFEST_FILENAME
 
@@ -226,6 +242,21 @@ class ProjectManager:
         # stored absolute path can be stale. Output must always follow the
         # manifest's current location, never the machine of origin.
         actual_dir = project_dir.resolve()
+        if self.paths.is_inside_system_root(actual_dir):
+            raise ProjectError(
+                f"Refusing to load project from SYSTEM_ROOT ({self.paths.system_root})",
+                workspace=workspace,
+                name=name,
+                path=str(actual_dir),
+            )
+        if not self.paths.is_inside_workspace(actual_dir):
+            raise ProjectError(
+                f"Project directory escapes workspace root: {actual_dir}",
+                workspace=workspace,
+                name=name,
+                path=str(actual_dir),
+            )
+
         if str(data.get("path", "")) != str(actual_dir):
             _logger.info(
                 "Rebasing project path from manifest to actual location",
@@ -261,6 +292,21 @@ class ProjectManager:
 
         The project's ``updated_at`` is refreshed automatically.
         """
+        if self.paths.is_inside_system_root(project.directory):
+            raise ProjectError(
+                f"Refusing to save project manifest into SYSTEM_ROOT ({self.paths.system_root})",
+                workspace=project.workspace,
+                name=project.name,
+                path=str(project.directory),
+            )
+        if not self.paths.is_inside_workspace(project.directory):
+            raise ProjectError(
+                f"Project directory escapes workspace root: {project.directory}",
+                workspace=project.workspace,
+                name=project.name,
+                path=str(project.directory),
+            )
+
         project.touch()
         workspace_path = self._resolve_workspace(project.workspace)
         manifest_file = project.directory / PROJECT_MANIFEST_FILENAME
@@ -273,10 +319,12 @@ class ProjectManager:
         Returns an empty list when the workspace does not exist.
         """
         try:
-            workspace_path = self._resolve_workspace(workspace)
-        except PathResolutionError:
+            workspace_path = self._resolve_workspace(workspace, check_allowed=False)
+        except (PathResolutionError, ProjectError):
             return []
         if not workspace_path.is_dir():
+            return []
+        if self.paths.is_inside_system_root(workspace_path):
             return []
 
         projects: list[Project] = []
@@ -303,7 +351,7 @@ class ProjectManager:
             workspace is scanned (discovered via :meth:`~SystemPaths.project_workspaces`).
         """
         if workspaces is None:
-            candidates = [ws.name for ws in self.paths.project_workspaces()]
+            candidates = [ws.name for ws in self.paths.project_workspaces(self.config.projects.allowed_workspaces)]
         else:
             candidates = list(workspaces)
 
@@ -313,15 +361,25 @@ class ProjectManager:
         return sorted(all_projects, key=lambda p: p.created_at, reverse=True)
 
     # ----------------------------------------------------------- helpers
-    def _resolve_workspace(self, name: str) -> Path:
+    def _resolve_workspace(self, name: str, *, check_allowed: bool = True) -> Path:
         """Resolve a workspace name to an absolute path inside WORKSPACE_ROOT.
 
         Raises
         ------
         PathResolutionError
             When the workspace path escapes WORKSPACE_ROOT or targets SYSTEM_ROOT.
+        ProjectError
+            When the workspace is not allowed and creation is disabled.
         """
-        return self.paths.workspace_path(name)
+        allowed = (
+            self.config.projects.allowed_workspaces
+            if (check_allowed and not self.config.projects.allow_workspace_creation)
+            else None
+        )
+        try:
+            return self.paths.workspace_path(name, allowed_workspaces=allowed)
+        except PathResolutionError as exc:
+            raise ProjectError(str(exc), workspace=name) from exc
 
 
 # ---------------------------------------------------------------- module API

@@ -96,7 +96,10 @@ Agen **DILARANG menyatakan tugas berhasil sebelum memeriksa berkas audit**:
 2. Buka dan baca `fact_audit.json`:
    - Pastikan `"passed": true`, `"structural_passed": true`, `"semantic_passed": true`.
    - Pastikan `"unsupported_claims": []` dan `"rejection_reasons": []`.
-3. Periksa keberadaan naskah final:
+3. Buka dan baca `human_style_audit.json` (Guard Output Manusia/Mahasiswa):
+   - Pastikan `"passed": true`.
+   - Pastikan bebas dari penambahan bab tak diminta, frasa klise AI, dan tabel/spreadsheet yang terlalu rumit.
+4. Periksa keberadaan naskah final:
    - Pastikan `final.docx` berhasil dibuat di direktori proyek.
    - Periksa draf `draft.md` bebas dari segala token internal (`turn...`, `view...`, `search...`, `filecite`, atau `【...】`).
 
@@ -141,14 +144,15 @@ Pengguna dan AI agent dapat menggunakan shortcut launcher `.\aai.bat` (atau `./a
 
 ---
 
-## 6. Humanizer & Tata Letak Dokumen Normal
+## 6. Humanizer, Tata Letak Dokumen Normal, & Output Guard
 
-Humanizer adalah tahap penyuntingan ringan sebelum DOCX final. Tujuannya membuat naskah terasa seperti tulisan mahasiswa yang rapi, bukan seperti jawaban AI yang terlalu licin. Humanizer **tidak boleh** menambah fakta, data, kutipan, DOI, halaman, sumber, atau klaim baru.
+Humanizer dan kebijakan `human-doc-output-guard` dijalankan sebelum dokumen final (`draft.md` dan `final.docx`) diekspor. Tujuannya membuat naskah terasa seperti tulisan mahasiswa yang rapi, natural, dan berbobot tanpa bloat artifisial AI. Guard ini **tidak boleh** menambah fakta, data, kutipan, DOI, halaman, sumber, atau klaim baru.
 
-Aturan gaya:
+Aturan gaya & output guard (lihat `skills/human-doc-output-guard/SKILL.md`):
 * Gunakan bahasa Indonesia yang sederhana, natural, dan akademik secukupnya.
-* Hindari pembuka template seperti "di era globalisasi", "secara keseluruhan", "dapat disimpulkan bahwa", dan frasa terlalu umum seperti "sangat penting untuk diperhatikan" jika bisa dibuat lebih pendek.
-* Pakai kalimat sedang-pendek. Jangan memaksa semua paragraf terdengar formal atau bombastis.
+* Hindari frasa klise AI: "secara komprehensif", "dalam konteks ini", "penting untuk digarisbawahi", "berdasarkan uraian di atas", "memiliki peran yang sangat signifikan", atau pembuka klise "di era globalisasi".
+* Ikuti instruksi pengguna secara sempit: jangan menambah subbab, teori pembuka, lembar cover, atau dekorasi yang tidak diminta.
+* Pakai kalimat sedang-pendek bervariasi. Jangan memaksa semua paragraf terdengar formal atau bombastis.
 * Pertahankan penanda jujur seperti `[perlu data pendukung]` dan `[sumber belum lengkap]`.
 
 Aturan tabel, daftar, dan heading:
@@ -157,6 +161,7 @@ Aturan tabel, daftar, dan heading:
 * Jangan membuat tabel hanya agar dokumen terlihat ramai. Jika satu paragraf lebih jelas, gunakan paragraf.
 * Bullet/nomor dipakai hanya untuk daftar nyata. Jangan mengubah seluruh esai menjadi poin-poin.
 * Heading dibuat singkat dan wajar, misalnya `Pendahuluan`, `Pembahasan`, `Kesimpulan`, bukan heading promosi atau terlalu dramatis.
+* Format data spreadsheet (NIM, nomor HP, tanggal, Rupiah) wajib dilindungi dan sel kosong tidak boleh diisi dengan data rekaan.
 
 ---
 

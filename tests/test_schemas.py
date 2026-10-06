@@ -7,8 +7,8 @@ import pytest
 from src.core.errors import StateTransitionError
 from src.schemas.base import BaseRecord, new_id, utc_now
 from src.schemas.claim import Claim, ClaimImportance, ClaimStatus
-from src.schemas.evidence import Evidence, EvidenceRelationship, EvidenceStrength
-from src.schemas.source import Source, SourceState, SourceType
+from src.schemas.evidence import Evidence, EvidenceRelationship, EvidenceStrength, ReadingDepth
+from src.schemas.source import RetrievalStatus, Source, SourceState, SourceType
 from src.schemas.task import ResearchMode, Task, TaskState
 
 
@@ -140,6 +140,94 @@ def test_source_is_foundational() -> None:
     # With a threshold of 2023, anything before 2013 (2023 - 10) is foundational
     assert old_src.is_foundational(recent_year_threshold=2023) is True
     assert recent_src.is_foundational(recent_year_threshold=2023) is False
+
+
+def test_retrieval_status_enum_members() -> None:
+    """RetrievalStatus has exactly the four expected members."""
+    expected = {"RETRIEVED", "PARTIAL", "FAILED", "NOT_ATTEMPTED"}
+    assert {m.value for m in RetrievalStatus} == expected
+
+
+def test_source_schema_v1_1_defaults() -> None:
+    """Source initializes with schema v1.1 defaults."""
+    src = Source(title="Test Paper", authors=["Author A"], year=2023)
+    assert src.schema_version == "1.1"
+    assert src.reading_depth is ReadingDepth.UNAVAILABLE
+    assert src.retrieval_status is RetrievalStatus.NOT_ATTEMPTED
+    assert src.publisher_verified is False
+    assert src.index_status == {}
+
+
+def test_source_update_reading_depth() -> None:
+    """update_reading_depth() records a state transition in history."""
+    src = Source(title="Test", authors=["A"], year=2023)
+    src.update_reading_depth(
+        ReadingDepth.FULL_TEXT, reason="retrieved and analyzed", actor="test_actor"
+    )
+    assert src.reading_depth is ReadingDepth.FULL_TEXT
+    assert len(src.history) == 1
+    trans = src.history[0]
+    assert trans.from_state == "UNAVAILABLE"
+    assert trans.to_state == "FULL_TEXT"
+    assert trans.reason == "retrieved and analyzed"
+    assert trans.actor == "test_actor"
+
+
+def test_source_transition_to_fulltext_retrieved_guard() -> None:
+    """transition_to(FULLTEXT_RETRIEVED) requires retrieval_status != NOT_ATTEMPTED."""
+    src = Source(title="Test", authors=["A"], year=2023)
+    assert src.retrieval_status is RetrievalStatus.NOT_ATTEMPTED
+
+    with pytest.raises(StateTransitionError, match="cannot advance to FULLTEXT_RETRIEVED"):
+        src.transition_to(SourceState.FULLTEXT_RETRIEVED, reason="advance attempt")
+
+    # When retrieval_status is RETRIEVED, transition succeeds
+    src.retrieval_status = RetrievalStatus.RETRIEVED
+    src.transition_to(SourceState.FULLTEXT_RETRIEVED, reason="retrieval succeeded")
+    assert src.state is SourceState.FULLTEXT_RETRIEVED
+
+
+def test_source_backward_compatibility_v1_0() -> None:
+    """Source deserializes v1.0 data cleanly with defaults for new fields."""
+    legacy_dict = {
+        "id": "src_20260101T000000_11223344",
+        "schema_version": "1.0",
+        "title": "Legacy Title",
+        "authors": ["Old Author"],
+        "year": 2021,
+    }
+    restored = Source.from_dict(legacy_dict)
+    assert restored.id == "src_20260101T000000_11223344"
+    assert restored.schema_version == "1.0"
+    assert restored.reading_depth is ReadingDepth.UNAVAILABLE
+    assert restored.retrieval_status is RetrievalStatus.NOT_ATTEMPTED
+    assert restored.publisher_verified is False
+    assert restored.index_status == {}
+
+
+def test_source_serialization_with_new_fields() -> None:
+    """Source serializes and deserializes all new v1.1 fields intact."""
+    src = Source(
+        title="Modern Study",
+        authors=["Modern Researcher"],
+        year=2024,
+        reading_depth=ReadingDepth.FULL_TEXT,
+        retrieval_status=RetrievalStatus.RETRIEVED,
+        publisher_verified=True,
+        index_status={"crossref": True, "scopus": False},
+    )
+    data = src.to_dict()
+    assert data["schema_version"] == "1.1"
+    assert data["reading_depth"] == "FULL_TEXT"
+    assert data["retrieval_status"] == "RETRIEVED"
+    assert data["publisher_verified"] is True
+    assert data["index_status"] == {"crossref": True, "scopus": False}
+
+    restored = Source.from_dict(data)
+    assert restored.reading_depth is ReadingDepth.FULL_TEXT
+    assert restored.retrieval_status is RetrievalStatus.RETRIEVED
+    assert restored.publisher_verified is True
+    assert restored.index_status == {"crossref": True, "scopus": False}
 
 
 # --------------------------------------------------------------------------- #

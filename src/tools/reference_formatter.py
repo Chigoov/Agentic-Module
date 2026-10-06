@@ -127,7 +127,13 @@ def _format_authors(authors: list[str]) -> tuple[str, list[str]]:
     return f"{head}, & {listed[-1]}", missing
 
 
-def format_reference(source: Source, style: CitationStyle = CitationStyle.APA7) -> ReferenceEntry:
+def format_reference(
+    source: Source,
+    style: CitationStyle = CitationStyle.APA7,
+    *,
+    disambiguation_suffix: str = "",
+    citation_key: str | None = None,
+) -> ReferenceEntry:
     """Format one verified :class:`Source` into an APA7 reference entry.
 
     Missing fields become explicit ``[missing: <field>]`` markers and are recorded
@@ -141,7 +147,8 @@ def format_reference(source: Source, style: CitationStyle = CitationStyle.APA7) 
     authors_str, author_missing = _format_authors(source.authors)
     missing.extend(author_missing)
 
-    year_str = str(source.year) if source.year is not None else _UNDATED
+    base_year = str(source.year) if source.year is not None else _UNDATED
+    year_str = f"{base_year}{disambiguation_suffix}" if disambiguation_suffix else base_year
     if source.year is None:
         missing.append("year")
 
@@ -180,7 +187,7 @@ def format_reference(source: Source, style: CitationStyle = CitationStyle.APA7) 
 
     formatted = f"{authors_str} ({year_str}). {title_str}. {venue_str}. {locator}"
     return ReferenceEntry(
-        citation_key=citation_key_for(source),
+        citation_key=citation_key or citation_key_for(source),
         source_id=source.id,
         formatted=formatted,
         missing_fields=missing,
@@ -192,9 +199,20 @@ def format_reference_list(
     style: CitationStyle = CitationStyle.APA7,
     *,
     project_id: str | None = None,
+    citation_manager: Any = None,
 ) -> ReferenceList:
     """Format a list of verified sources into an ordered :class:`ReferenceList`."""
-    entries = [format_reference(source, style) for source in sources]
+    entries: list[ReferenceEntry] = []
+    for source in sources:
+        suffix = ""
+        ckey = None
+        if citation_manager is not None:
+            label = citation_manager.get_citation_label(source.id)
+            match = re.search(r"(\d{4})([a-z])$", label)
+            if match:
+                suffix = match.group(2)
+            ckey = citation_manager.citation_key_for_source(source.id)
+        entries.append(format_reference(source, style, disambiguation_suffix=suffix, citation_key=ckey))
     return ReferenceList(project_id=project_id, style=style, entries=entries)
 
 

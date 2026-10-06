@@ -37,6 +37,10 @@ __all__ = [
     "append_jsonl",
     "read_jsonl",
     "backup_file",
+    "save_evidence_graph",
+    "load_evidence_graph",
+    "save_provenance_chain",
+    "load_provenance_chain",
 ]
 
 
@@ -51,11 +55,29 @@ def ensure_within(path: str | os.PathLike[str], root: str | os.PathLike[str]) ->
     Raises
     ------
     PathSafetyError
-        When the resolved path escapes ``root``.
+        When the resolved path escapes ``root`` or is invalid.
     """
+    raw_str = str(path)
+    if not raw_str or not raw_str.strip():
+        raise PathSafetyError(
+            "Refusing to operate on an empty or blank path",
+            path=raw_str,
+            root=str(root),
+        )
+    if "\x00" in raw_str:
+        raise PathSafetyError(
+            "Refusing to operate on a path containing null bytes",
+            path=raw_str,
+            root=str(root),
+        )
+
     resolved_root = Path(root).resolve()
-    # ``strict=False`` so not-yet-created files can still be validated.
-    resolved_path = Path(path).resolve()
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        resolved_path = (resolved_root / candidate).resolve()
+    else:
+        resolved_path = candidate.resolve()
+
     try:
         resolved_path.relative_to(resolved_root)
     except ValueError as exc:
@@ -64,6 +86,23 @@ def ensure_within(path: str | os.PathLike[str], root: str | os.PathLike[str]) ->
             path=str(resolved_path),
             root=str(resolved_root),
         ) from exc
+
+    # Enforce that if root is outside SYSTEM_ROOT, resolved_path cannot be inside SYSTEM_ROOT
+    try:
+        from src.core.paths import get_paths
+        paths = get_paths()
+        if paths.is_inside_workspace(paths.system_root.resolve()):
+            if paths.is_inside_system_root(resolved_path) and not paths.is_inside_system_root(resolved_root):
+                raise PathSafetyError(
+                    "Refusing to operate on a path inside SYSTEM_ROOT",
+                    path=str(resolved_path),
+                    root=str(resolved_root),
+                )
+    except PathSafetyError:
+        raise
+    except Exception:
+        pass
+
     return resolved_path
 
 
@@ -200,3 +239,43 @@ def backup_file(path: str | os.PathLike[str], *, root: str | os.PathLike[str]) -
         destination = source.with_name(f"{source.name}.{stamp}.{counter}.bak")
     destination.write_bytes(source.read_bytes())
     return destination
+
+
+def save_evidence_graph(
+    graph: dict[str, Any],
+    path: str | os.PathLike[str],
+    *,
+    root: str | os.PathLike[str],
+) -> Path:
+    """Save an evidence graph dictionary to JSON."""
+    return write_json(path, graph, root=root, overwrite=True)
+
+
+def load_evidence_graph(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Load an evidence graph dictionary from JSON. Returns {} if missing."""
+    target = Path(path)
+    if not target.is_file():
+        return {}
+    data = read_json(target)
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def save_provenance_chain(
+    records: Iterable[SchemaModel | dict[str, Any]],
+    path: str | os.PathLike[str],
+    *,
+    root: str | os.PathLike[str],
+) -> int:
+    """Save provenance records to a JSON Lines file."""
+    return append_jsonl(path, records, root=root)
+
+
+def load_provenance_chain(path: str | os.PathLike[str]) -> list[dict[str, Any]]:
+    """Load provenance records from a JSON Lines file. Returns [] if missing."""
+    target = Path(path)
+    if not target.is_file():
+        return []
+    return read_jsonl(target)
+

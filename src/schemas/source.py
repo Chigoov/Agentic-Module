@@ -20,10 +20,14 @@ from pydantic import Field
 
 from src.core.errors import StateTransitionError
 from src.schemas.base import BaseRecord
+from src.schemas.evidence import ReadingDepth
 
 __all__ = [
     "SourceState",
     "SourceType",
+    "RetrievalStatus",
+    "AccessMode",
+    "RightsStatus",
     "Source",
     "is_verified",
     "is_approved",
@@ -61,6 +65,35 @@ class SourceType(StrEnum):
     TECHNICAL_REPORT = "TECHNICAL_REPORT"
     WEB_RESOURCE = "WEB_RESOURCE"
     OTHER = "OTHER"
+
+
+class RetrievalStatus(StrEnum):
+    """Outcome of full-text retrieval for a source."""
+
+    RETRIEVED = "RETRIEVED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+    NOT_ATTEMPTED = "NOT_ATTEMPTED"
+
+
+class AccessMode(StrEnum):
+    """Availability and interaction mode for source full text."""
+
+    OPEN_DOWNLOAD = "OPEN_DOWNLOAD"
+    READ_ONLINE = "READ_ONLINE"
+    BORROW_ONLY = "BORROW_ONLY"
+    PREVIEW_ONLY = "PREVIEW_ONLY"
+    UNKNOWN = "UNKNOWN"
+
+
+class RightsStatus(StrEnum):
+    """Legal rights and licensing classification for a source."""
+
+    PUBLIC_DOMAIN = "PUBLIC_DOMAIN"
+    OPEN_LICENSE = "OPEN_LICENSE"
+    PROVIDER_STATED_FREE = "PROVIDER_STATED_FREE"
+    RESTRICTED = "RESTRICTED"
+    UNKNOWN = "UNKNOWN"
 
 
 def is_verified(state: SourceState | str) -> bool:
@@ -119,9 +152,18 @@ class Source(BaseRecord):
         Local path or cache key for retrieved full text.
     metadata:
         Additional provider-specific fields preserved for auditability.
+    reading_depth:
+        How deeply the source was read during evidence extraction.
+    retrieval_status:
+        Outcome of full-text retrieval for the source.
+    publisher_verified:
+        Whether the source was verified against the publisher's records.
+    index_status:
+        Academic database indexing status mapping.
     """
 
     id_prefix: str = Field(default="src", exclude=True, repr=False)
+    schema_version: str = "1.1"
 
     title: str
     authors: list[str] = Field(default_factory=list)
@@ -140,10 +182,76 @@ class Source(BaseRecord):
     retrieval_path: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    # --- Evidence Intelligence fields (schema v1.1) ---
+    reading_depth: ReadingDepth = ReadingDepth.UNAVAILABLE
+    retrieval_status: RetrievalStatus = RetrievalStatus.NOT_ATTEMPTED
+    publisher_verified: bool = False
+    index_status: dict[str, bool] = Field(default_factory=dict)
+
+    # --- Book, Access & Rights fields ---
+    publisher: str | None = None
+    isbn: str | None = None
+    language: str | None = None
+    landing_url: str | None = None
+    download_urls: list[str] = Field(default_factory=list)
+    license: str | None = None
+    license_url: str | None = None
+    rights_status: RightsStatus = RightsStatus.UNKNOWN
+    access_mode: AccessMode = AccessMode.UNKNOWN
+    provider: str | None = None
+    provider_record_id: str | None = None
+
+    @property
+    def download_allowed(self) -> bool:
+        """True only if access_mode is OPEN_DOWNLOAD, rights are clear, and download_urls exist."""
+        if self.access_mode != AccessMode.OPEN_DOWNLOAD:
+            return False
+        if self.rights_status not in {
+            RightsStatus.PUBLIC_DOMAIN,
+            RightsStatus.OPEN_LICENSE,
+            RightsStatus.PROVIDER_STATED_FREE,
+        }:
+            return False
+        return bool(self.download_urls)
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        data = super().model_dump(*args, **kwargs)
+        for field_name in (
+            "reading_depth",
+            "retrieval_status",
+            "publisher_verified",
+            "index_status",
+            "publisher",
+            "isbn",
+            "language",
+            "landing_url",
+            "download_urls",
+            "license",
+            "license_url",
+            "rights_status",
+            "access_mode",
+            "provider",
+            "provider_record_id",
+        ):
+            if field_name not in self.model_fields_set:
+                data.pop(field_name, None)
+        return data
+
     def transition_to(
         self, new_state: SourceState, *, reason: str, actor: str | None = None
     ) -> None:
         """Transition to ``new_state``, recording the change."""
+        # Guard: NOT_ATTEMPTED blocks FULLTEXT_RETRIEVED
+        if (
+            new_state == SourceState.FULLTEXT_RETRIEVED
+            and self.retrieval_status == RetrievalStatus.NOT_ATTEMPTED
+        ):
+            raise StateTransitionError(
+                f"Source {self.id} cannot advance to FULLTEXT_RETRIEVED "
+                "with retrieval_status NOT_ATTEMPTED",
+                source_id=self.id,
+                state=str(self.state),
+            )
         old_state = self.state
         if old_state == new_state:
             raise StateTransitionError(
@@ -155,6 +263,19 @@ class Source(BaseRecord):
             from_state=str(old_state), to_state=str(new_state), reason=reason, actor=actor
         )
         self.state = new_state
+
+    def update_reading_depth(
+        self, new_depth: ReadingDepth, *, reason: str, actor: str | None = None
+    ) -> None:
+        """Update reading_depth with history recording."""
+        old_depth = self.reading_depth
+        self.record_transition(
+            from_state=str(old_depth),
+            to_state=str(new_depth),
+            reason=reason,
+            actor=actor,
+        )
+        self.reading_depth = new_depth
 
     def add_verification_note(self, note: str) -> None:
         """Append a corroboration or ambiguity note."""

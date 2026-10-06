@@ -168,7 +168,7 @@ class AcademicRunAudit:
         short_id = uuid.uuid4().hex[:8]
         run_id = f"run_{timestamp_slug}_{short_id}"
 
-        run_dir = project.directory / "runs" / run_id
+        run_dir = project.run_path(run_id)
         run_dir.mkdir(parents=True, exist_ok=True)
 
         audit = cls(
@@ -296,6 +296,22 @@ class AcademicRunAudit:
                     overwrite=True,
                 )
                 fact_audit_path = str(fact_audit_file)
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Snapshot human style audit if artifact exists
+        human_style_file = self.project.artifact_path(ProjectArtifact.HUMAN_STYLE_AUDIT)
+        human_style_path: str | None = None
+        if human_style_file.exists():
+            try:
+                style_data = json.loads(human_style_file.read_text(encoding="utf-8"))
+                write_json(
+                    self.run_dir / "human_style_audit_snapshot.json",
+                    sanitize_snapshot(style_data),
+                    root=self._root,
+                    overwrite=True,
+                )
+                human_style_path = str(human_style_file)
             except Exception:  # noqa: BLE001
                 pass
 

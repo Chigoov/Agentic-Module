@@ -19,10 +19,14 @@ from __future__ import annotations
 
 __all__: list[str] = [
     "academic",
+    "contradiction",
     "deep_research",
+    "evidence_audit",
     "evidence_flow",
+    "evidence_graph",
     "optimization",
     "orchestrator",
+    "provenance",
     "validation",
     "verification_flow",
     "writing_flow",

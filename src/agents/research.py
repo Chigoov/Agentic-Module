@@ -1,10 +1,11 @@
-"""Concrete research agents for roadmap Phase 7.
+"""Concrete research agents for roadmap Phase 7 & 15.
 
-These agents are thin coordinators around existing schemas, tools, and flows.
-They do not hide provider logic and they do not call models.
+These agents coordinate research schemas, tools, discovery providers, and retrieval.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from pydantic import Field
 
@@ -14,9 +15,12 @@ from src.core.evidence_registry import EvidenceRegistry
 from src.schemas.claim import Claim
 from src.schemas.evidence import Evidence, EvidenceLocation
 from src.schemas.project import Project
-from src.schemas.source import Source
+from src.schemas.source import Source, SourceState, is_verified
 from src.schemas.task import ResearchMode, Task
+from src.tools.dedupe import deduplicate
 from src.tools.evidence_extractor import EvidenceExtractor
+from src.tools.pdf_parser import find_passage_page_location
+from src.tools.research_tool import ResearchRequest
 from src.tools.retrieval import RetrievalRequest, RetrievalTool
 from src.tools.verification_tool import VerificationEngine
 from src.workflows.verification_flow import apply_verification_result
@@ -41,7 +45,38 @@ __all__ = [
     "EvidenceAgentResponse",
     "EvidenceAgent",
     "ClaimAgent",
+    "rank_sources",
 ]
+
+
+def rank_sources(sources: list[Source]) -> list[Source]:
+    """Rank sources deterministically by state, downloadability, citation count, and recency."""
+    def sort_key(s: Source) -> tuple[int, int, int, int, str]:
+        # 1. State priority (approved=3, verified=2, discovered=1, rejected=0)
+        if s.state is SourceState.APPROVED:
+            state_score = 3
+        elif is_verified(s.state):
+            state_score = 2
+        elif s.state is SourceState.REJECTED:
+            state_score = 0
+        else:
+            state_score = 1
+
+        # 2. Direct download permitted (open full text is high value for evidence)
+        dl_score = 1 if getattr(s, "download_allowed", False) else 0
+
+        # 3. Citation count
+        cite_score = s.citation_count if s.citation_count is not None else 0
+
+        # 4. Year
+        year_score = s.year if s.year is not None else 0
+
+        # 5. Title for stable sorting
+        title_str = (s.title or "").casefold()
+
+        return (state_score, dl_score, cite_score, year_score, title_str)
+
+    return sorted(sources, key=sort_key, reverse=True)
 
 
 class TaskAnalyzerRequest(AgentRequest):
@@ -99,6 +134,9 @@ class ResearchPlannerAgent(BaseAgent[ResearchPlannerRequest, ResearchPlannerResp
 
 class DiscoveryRequest(AgentRequest):
     candidates: list[Source] = Field(default_factory=list)
+    queries: list[str] = Field(default_factory=list)
+    providers: list[Any] = Field(default_factory=list)
+    max_results_per_query: int = Field(default=5, ge=1, le=50)
 
 
 class DiscoveryResponse(AgentResponse):
@@ -112,15 +150,23 @@ class DiscoveryAgent(BaseAgent[DiscoveryRequest, DiscoveryResponse]):
         return DiscoveryResponse(success=False, error_message=error_message)
 
     def _execute(self, request: DiscoveryRequest) -> DiscoveryResponse:
-        seen: set[tuple[str, str | None]] = set()
-        out: list[Source] = []
-        for source in request.candidates:
-            key = (source.title.casefold(), source.doi.casefold() if source.doi else None)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(source)
-        return DiscoveryResponse(sources=out, metadata={"deduped": len(request.candidates) - len(out)})
+        all_candidates: list[Source] = list(request.candidates)
+        if request.queries and request.providers:
+            for query in request.queries:
+                for prov in request.providers:
+                    try:
+                        resp = prov.execute(
+                            ResearchRequest(query=query, max_results=request.max_results_per_query)
+                        )
+                        if resp.success and resp.results:
+                            all_candidates.extend(resp.results)
+                    except Exception:
+                        pass
+
+        # Deduplicate deterministically using the enhanced multi-key deduplicator
+        deduped = deduplicate(all_candidates)
+        ranked = rank_sources(deduped)
+        return DiscoveryResponse(sources=ranked, metadata={"deduped": len(all_candidates) - len(ranked)})
 
 
 class VerificationRequest(AgentRequest):
@@ -175,10 +221,17 @@ class RetrievalAgent(BaseAgent[RetrievalAgentRequest, RetrievalAgentResponse]):
         parsed: dict[str, str] = {}
         failed: list[str] = []
         for source in request.sources:
-            response = tool.execute(RetrievalRequest(project=request.project, source=source))
+            direct_dl = getattr(source, "download_allowed", False)
+            response = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=direct_dl))
             if response.success and response.parsed_text:
                 parsed[source.id] = response.parsed_text
             elif not response.success:
+                # If direct download failed, try regular abstract/url retrieval as fallback
+                if direct_dl:
+                    fallback_resp = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=False))
+                    if fallback_resp.success and fallback_resp.parsed_text:
+                        parsed[source.id] = fallback_resp.parsed_text
+                        continue
                 failed.append(source.id)
         return RetrievalAgentResponse(sources=request.sources, parsed_text_by_source=parsed, failed=failed)
 
@@ -203,12 +256,23 @@ class EvidenceAgent(BaseAgent[EvidenceAgentRequest, EvidenceAgentResponse]):
         return EvidenceAgentResponse(success=False, error_message=error_message)
 
     def _execute(self, request: EvidenceAgentRequest) -> EvidenceAgentResponse:
+        # Check if source has page records in metadata (from PDF parsing)
+        pdf_pages = request.source.metadata.get("pdf_pages") or []
+        location = None
+        if pdf_pages:
+            loc = find_passage_page_location(request.passage, pdf_pages)
+            if loc:
+                location = loc
+
+        if location is None:
+            location = EvidenceLocation(locator=request.locator)
+
         result = EvidenceExtractor().extract_verbatim(
             passage=request.passage,
             haystack=request.haystack,
             claim_id=request.claim.id,
             source=request.source,
-            location=EvidenceLocation(locator=request.locator),
+            location=location,
         )
         if not result.found or result.evidence is None:
             return EvidenceAgentResponse(success=False, error_message=result.error)

@@ -165,21 +165,28 @@ def _project_from_payload(payload: dict[str, Any]) -> Project:
     untrusted caller must not choose where files are written. Projects are
     created under the server's own workspace root.
     """
+    paths = get_paths()
     if "project" in payload:
         project = Project.model_validate(payload["project"])
-        if not get_paths().is_inside_workspace(project.directory):
+        if not paths.is_inside_workspace(project.directory):
             raise ValueError(
                 "project path is outside the server workspace root"
             )
+        if paths.is_inside_system_root(project.directory):
+            raise ValueError(
+                "project path is inside SYSTEM_ROOT (DATA BASE)"
+            )
         return project
-    workspace_root = get_paths().workspace_root
+    workspace_root = paths.workspace_root
     workspace_name = payload.get("workspace", "TUGAS 1")
     project_name = payload.get("project_name") or payload.get("topic") or "research"
     # Slugify to a safe folder name; the server picks the directory.
     safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in project_name).strip() or "research"
     project_dir = (workspace_root / workspace_name / safe_name).resolve()
-    if not get_paths().is_inside_workspace(project_dir):
+    if not paths.is_inside_workspace(project_dir):
         raise ValueError("workspace escapes the server workspace root")
+    if paths.is_inside_system_root(project_dir):
+        raise ValueError("project directory is inside SYSTEM_ROOT (DATA BASE)")
     project_dir.mkdir(parents=True, exist_ok=True)
     return Project(
         name=safe_name,

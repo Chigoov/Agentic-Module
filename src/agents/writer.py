@@ -27,14 +27,14 @@ from collections import defaultdict
 from pydantic import Field
 
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
-from src.core.storage import atomic_write_text, backup_file
+from src.core.storage import atomic_write_text, backup_file, write_json
 from src.schemas.citation import CitationStyle, ReferenceList
 from src.schemas.claim import Claim
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project, ProjectArtifact
 from src.schemas.source import Source
-from src.tools.citation_manager import CitationManager
+from src.tools.citation_manager import CitationManager, build_citation_map
 from src.tools.reference_formatter import (
     format_in_text_author_year,
     format_reference_list,
@@ -130,11 +130,11 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
         lines: list[str] = [f"# {request.outline.title}", ""]
 
         for section in request.outline.sections:
-            self._render_section(section, lines, claim_by_id, evidence_by_claim, source_by_id)
+            self._render_section(section, lines, claim_by_id, evidence_by_claim, source_by_id, manager)
 
         style = self._resolve_style(request.project.citation_style)
         reference_list = format_reference_list(
-            manager.cited_sources(), style=style, project_id=request.project.id
+            manager.cited_sources(), style=style, project_id=request.project.id, citation_manager=manager
         )
         # Single ID-to-label mapping (audit A10/A02): the bibliography is
         # rendered into the draft itself, so a --no-docx run still ships a
@@ -164,6 +164,14 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             overwrite=True,
         )
 
+        # Build and persist canonical citation_map.json artifact (Bagian G)
+        citation_map_data = build_citation_map(
+            claims=writable, evidence=request.evidence, citation_manager=manager
+        )
+        map_path = request.project.artifact_path(ProjectArtifact.CITATION_MAP)
+        backup_file(map_path, root=request.project.directory)
+        write_json(map_path, citation_map_data, root=request.project.directory, overwrite=True)
+
         response = WriterResponse(
             success=True,
             draft=draft,
@@ -177,6 +185,7 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             "writable": len(writable),
             "excluded": len(excluded),
             "cited_sources": len(reference_list.entries),
+            "citation_map_path": str(map_path),
         }
         return response
 
@@ -187,6 +196,7 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
         claim_by_id: dict[str, Claim],
         evidence_by_claim: dict[str, list[Evidence]],
         source_by_id: dict[str, Source],
+        manager: CitationManager | None = None,
     ) -> None:
         """Render one outline section and all of its subsections (audit A17).
         Previously only top-level sections were rendered, so claims referenced
@@ -199,7 +209,7 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             if claim is None:
                 continue
             statement = WriterAgent._humanize_statement(claim.claim_text)
-            citations = WriterAgent._citations_for(claim, evidence_by_claim, source_by_id)
+            citations = WriterAgent._citations_for(claim, evidence_by_claim, source_by_id, manager)
             has_dot = statement.endswith(".")
             if has_dot and citations:
                 statement = statement[:-1]
@@ -218,13 +228,14 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
                 if source is None:
                     continue
                 locator = evidence.location.describe()
+                c_label = manager.get_citation_label(source.id) if manager else format_in_text_author_year(source)
                 lines.append(
                     f'> "{evidence.evidence_text}" '
-                    f"({format_in_text_author_year(source)}, {locator})"
+                    f"({c_label}, {locator})"
                 )
                 lines.append("")
         for subsection in section.subsections:
-            WriterAgent._render_section(subsection, lines, claim_by_id, evidence_by_claim, source_by_id)
+            WriterAgent._render_section(subsection, lines, claim_by_id, evidence_by_claim, source_by_id, manager)
 
     @staticmethod
     def _humanize_statement(statement: str) -> str:
@@ -250,6 +261,7 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
         claim: Claim,
         evidence_by_claim: dict[str, list[Evidence]],
         source_by_id: dict[str, Source],
+        manager: CitationManager | None = None,
     ) -> str:
         """Render the in-text author-year pointer for a claim's sources.
 
@@ -271,6 +283,9 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             if source is None or source.id in seen:
                 continue
             seen.add(source.id)
-            forms.append(format_in_text_author_year(source))
+            if manager is not None:
+                forms.append(manager.get_citation_label(source.id))
+            else:
+                forms.append(format_in_text_author_year(source))
 
         return f" ({'; '.join(forms)})" if forms else ""

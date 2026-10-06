@@ -61,6 +61,9 @@ writing:
 projects:
   # Project artifacts live in workspace project folders, never in SYSTEM_ROOT.
   default_workspace: TUGAS 1
+  allowed_workspaces:
+    - TUGAS 1
+    - TUGAS 2
   allow_workspace_creation: false
 
 model_routing:
@@ -118,5 +121,18 @@ tools:
     status: NOT_IMPLEMENTED
     enabled: false
     base_url: null
+    api_key_env: null
+    timeout_seconds: 30
+  doab:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: https://directory.doabooks.org/rest/search
+    api_key_env: null
+    contact_email_env: DOAB_CONTACT_EMAIL
+    timeout_seconds: 30
+  open_library:
+    status: NOT_IMPLEMENTED
+    enabled: false
+    base_url: https://openlibrary.org/search.json
     api_key_env: null
     timeout_seconds: 30

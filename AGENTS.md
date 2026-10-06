@@ -42,6 +42,25 @@ python -m src export-bundle --input-json path\to\input.json
 python -m src export-bundle --input-json path\to\input.json --run-id <run_id>
 ```
 
+Run Deep Research Mode:
+
+```powershell
+python -m src research --topic "topik atau instruksi riset" --workspace "TUGAS 1" --min-sources 2 --max-sources 5
+```
+
+Inspect and resolve review queue:
+
+```powershell
+python -m src review-queue path\to\project --status PENDING
+python -m src review-queue path\to\project --resolve <item_or_claim_id> --notes "catatan resolusi" --decision SUPPORTED
+```
+
+Finalize academic project after resolving review items:
+
+```powershell
+python -m src finalize path\to\project
+```
+
 ## Rules
 
 - Do not invent sources, DOI, quotes, page numbers, or evidence.
@@ -52,6 +71,7 @@ python -m src export-bundle --input-json path\to\input.json --run-id <run_id>
 - Every final academic output must be reviewed and verified by a human expert before publication or submission.
 - Never finalize academic output (SourceState.APPROVED or final DOCX) if sources have not been verified against real bibliographic databases (Crossref/PubMed/etc.).
 - Run the humanizer pass before final DOCX: keep Indonesian prose simple, natural, and student-like; remove generic AI filler without adding facts, citations, sources, or evidence.
+- Enforce the `human-doc-output-guard` policy: follow user instructions narrowly without unsolicited bloat, maintain natural student tone without AI clichés, keep tables/spreadsheets simple and authentic, and verify `human_style_audit.json` passes.
 - Use normal student document layout: short headings, ordinary paragraphs, bullets only for real lists, and tables only for comparisons/data/rubrics. Keep tables compact with clear headers, usually 2-4 columns, and avoid long paragraphs inside cells.
 - Check the command exit code and parse stdout as JSON when the command returns JSON.
 - Run `python -m pytest -q --tb=short` after code changes.
@@ -88,7 +108,7 @@ Before running academic tasks, detect your environment capability:
 - **Internet Search:** Mandatory component for real source verification.
 - **Sandbox/Terminal:** Mandatory component for actual execution and compilation.
 
-See `skills/autonomi-agentic-ilmiah/SKILL.md` and `skills/autonomi-agentic-ilmiah/references/` for detailed reference.
+See `skills/autonomi-agentic-ilmiah/SKILL.md`, `skills/human-doc-output-guard/SKILL.md`, and `skills/autonomi-agentic-ilmiah/references/` for detailed reference.
 
 ## Minimal JSON Shape
 

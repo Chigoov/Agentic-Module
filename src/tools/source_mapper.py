@@ -24,7 +24,7 @@ import re
 from typing import Any, Iterable
 
 from src.schemas.base import Provenance
-from src.schemas.source import Source, SourceType
+from src.schemas.source import AccessMode, RightsStatus, Source, SourceType
 
 __all__ = [
     "normalize_doi",
@@ -34,6 +34,7 @@ __all__ = [
     "coerce_year",
     "source_from_dict",
     "best_title_match",
+    "classify_rights_and_access",
 ]
 
 #: DOI prefix forms that are stripped before comparison/storage.
@@ -172,6 +173,89 @@ def coerce_year(raw: Any) -> int | None:
     return year if 0 <= year <= 9999 else None
 
 
+def classify_rights_and_access(
+    *,
+    download_urls: list[str] | None = None,
+    landing_url: str | None = None,
+    license_text: str | None = None,
+    rights_status_hint: RightsStatus | str | None = None,
+    access_mode_hint: AccessMode | str | None = None,
+    ebook_access: str | None = None,
+    is_preview: bool = False,
+) -> tuple[RightsStatus, AccessMode]:
+    """Deterministically classify rights_status and access_mode.
+
+    Rules:
+    - Never infer OPEN_DOWNLOAD from .pdf extension alone.
+    - BORROW_ONLY and PREVIEW_ONLY must never become OPEN_DOWNLOAD.
+    - If license or access is unclear -> (UNKNOWN, UNKNOWN).
+    - OPEN_DOWNLOAD requires verified download URL + clear open rights.
+    """
+    rights = RightsStatus.UNKNOWN
+    if isinstance(rights_status_hint, RightsStatus):
+        rights = rights_status_hint
+    elif isinstance(rights_status_hint, str):
+        try:
+            rights = RightsStatus(rights_status_hint)
+        except ValueError:
+            rights = RightsStatus.UNKNOWN
+
+    if rights is RightsStatus.UNKNOWN and license_text:
+        if isinstance(license_text, list):
+            parts = []
+            for item in license_text:
+                if isinstance(item, dict):
+                    parts.extend(str(v) for v in item.values() if v)
+                elif item is not None:
+                    parts.append(str(item))
+            lt = " ".join(parts).lower()
+        elif isinstance(license_text, dict):
+            lt = " ".join(str(v) for v in license_text.values() if v).lower()
+        else:
+            lt = str(license_text).lower()
+
+        if any(term in lt for term in ("public domain", "cc0", "cc-0", "zero")):
+            rights = RightsStatus.PUBLIC_DOMAIN
+        elif any(term in lt for term in ("creative commons", "cc by", "cc-by", "open access", "open license", "gpl", "mit license", "apache")):
+            rights = RightsStatus.OPEN_LICENSE
+        elif any(term in lt for term in ("free to read", "free download", "free access", "freely available")):
+            rights = RightsStatus.PROVIDER_STATED_FREE
+        elif any(term in lt for term in ("all rights reserved", "restricted", "copyright", "proprietary", "borrow", "subscription", "paywall")):
+            rights = RightsStatus.RESTRICTED
+
+    access = AccessMode.UNKNOWN
+    if isinstance(access_mode_hint, AccessMode):
+        access = access_mode_hint
+    elif isinstance(access_mode_hint, str):
+        try:
+            access = AccessMode(access_mode_hint)
+        except ValueError:
+            access = AccessMode.UNKNOWN
+
+    ea = (ebook_access or "").lower()
+    if ea in {"borrowable", "borrow", "inlibrary"}:
+        access = AccessMode.BORROW_ONLY
+        if rights is RightsStatus.UNKNOWN:
+            rights = RightsStatus.RESTRICTED
+    elif ea in {"preview", "preview_only"} or is_preview:
+        access = AccessMode.PREVIEW_ONLY
+    elif access is AccessMode.UNKNOWN:
+        has_downloads = bool(download_urls and any(u.strip() for u in download_urls))
+        is_open_rights = rights in {
+            RightsStatus.PUBLIC_DOMAIN,
+            RightsStatus.OPEN_LICENSE,
+            RightsStatus.PROVIDER_STATED_FREE,
+        }
+        if has_downloads and is_open_rights and not is_preview:
+            access = AccessMode.OPEN_DOWNLOAD
+        elif is_open_rights and (landing_url or has_downloads):
+            access = AccessMode.READ_ONLINE
+        elif rights is RightsStatus.RESTRICTED:
+            access = AccessMode.UNKNOWN
+
+    return rights, access
+
+
 def source_from_dict(
     data: dict[str, Any],
     *,
@@ -215,6 +299,18 @@ def source_from_dict(
         "citation_count",
         "cited_by",
         "cites",
+        "publisher",
+        "isbn",
+        "language",
+        "landing_url",
+        "download_urls",
+        "license",
+        "license_url",
+        "rights_status",
+        "access_mode",
+        "provider",
+        "provider_record_id",
+        "ebook_access",
     }
 
     authors = normalize_authors(data.get("authors"))
@@ -240,17 +336,78 @@ def source_from_dict(
             continue
         metadata[key] = value
 
+    # Preserve publisher in metadata if explicitly passed (backward compatibility)
+    if "publisher" in data:
+        metadata["publisher"] = data["publisher"]
+
+    publisher = data.get("publisher")
+    venue = data.get("venue") or data.get("source") or publisher
+    isbn = data.get("isbn")
+    language = data.get("language")
+    landing_url = data.get("landing_url") or data.get("url") or data.get("article_url")
+    url = data.get("url") or data.get("article_url") or landing_url
+
+    raw_dl = data.get("download_urls")
+    download_urls: list[str] = []
+    if isinstance(raw_dl, list):
+        download_urls = [str(u) for u in raw_dl if u]
+    elif isinstance(raw_dl, str) and raw_dl.strip():
+        download_urls = [raw_dl.strip()]
+
+    raw_license = data.get("license")
+    license_url = data.get("license_url")
+    license_text: str | None = None
+    if isinstance(raw_license, list):
+        parts = []
+        for item in raw_license:
+            if isinstance(item, dict):
+                if not license_url and item.get("URL"):
+                    license_url = str(item["URL"])
+                parts.extend(str(v) for v in item.values() if v)
+            elif item is not None:
+                parts.append(str(item))
+        license_text = ", ".join(parts) if parts else None
+    elif isinstance(raw_license, dict):
+        if not license_url and raw_license.get("URL"):
+            license_url = str(raw_license["URL"])
+        license_text = ", ".join(f"{k}: {v}" for k, v in raw_license.items())
+    elif raw_license is not None:
+        license_text = str(raw_license)
+
+    provider = data.get("provider") or origin
+    provider_record_id = data.get("provider_record_id")
+
+    rights_status, access_mode = classify_rights_and_access(
+        download_urls=download_urls,
+        landing_url=landing_url,
+        license_text=license_text,
+        rights_status_hint=data.get("rights_status"),
+        access_mode_hint=data.get("access_mode"),
+        ebook_access=data.get("ebook_access"),
+    )
+
     source = Source(
         title=data.get("title") or "",
         authors=authors,
         year=coerce_year(data.get("year")),
-        venue=data.get("venue") or data.get("source"),
+        venue=venue,
         doi=doi,
-        url=data.get("url") or data.get("article_url"),
+        url=url,
         abstract=data.get("abstract"),
         source_type=source_type,
         citation_count=citation_count,
         metadata=metadata,
+        publisher=publisher,
+        isbn=isbn,
+        language=language,
+        landing_url=landing_url,
+        download_urls=download_urls,
+        license=license_text,
+        license_url=license_url,
+        rights_status=rights_status,
+        access_mode=access_mode,
+        provider=provider,
+        provider_record_id=provider_record_id,
     )
 
     if origin:

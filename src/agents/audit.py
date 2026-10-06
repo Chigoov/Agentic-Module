@@ -42,6 +42,12 @@ __all__ = [
     "FactAuditRequest",
     "FactAuditResponse",
     "FactAuditAgent",
+    "HumanStyleAuditRequest",
+    "HumanStyleAuditResponse",
+    "HumanStyleAuditAgent",
+    "NaturalStudentOutputGuard",
+    "AI_STYLE_CLICHE_PHRASES",
+    "sanitize_student_text",
     "STRONG_CLAIM_TERMS",
     "PRELIMINARY_EVIDENCE_TERMS",
     "CAUSAL_OR_EFFECT_TERMS",
@@ -602,3 +608,306 @@ class FactAuditAgent(BaseAgent[FactAuditRequest, FactAuditResponse]):
             verification_reports=verification_reports,
             audit_path=str(path),
         )
+
+
+# =============================================================================
+# Human Doc Output Guard / Natural Student Output Guard
+# =============================================================================
+
+AI_STYLE_CLICHE_PHRASES: tuple[str, ...] = (
+    "secara komprehensif",
+    "dalam konteks ini",
+    "penting untuk digarisbawahi",
+    "berdasarkan uraian di atas",
+    "memiliki peran yang sangat signifikan",
+    "memiliki peranan yang sangat signifikan",
+    "memiliki peran yang sangat krusial",
+    "memiliki peranan yang sangat krusial",
+    "pada era globalisasi saat ini",
+    "di era globalisasi saat ini",
+    "pada era modern saat ini",
+    "di era modern saat ini",
+    "tidak dapat dipungkiri bahwa",
+    "menyelami lebih dalam",
+)
+
+AI_CLICHE_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("secara komprehensif", "secara menyeluruh"),
+    ("dalam konteks ini, ", ""),
+    ("dalam konteks ini ", ""),
+    ("penting untuk digarisbawahi bahwa ", ""),
+    ("penting untuk digarisbawahi, ", ""),
+    ("penting untuk digarisbawahi ", ""),
+    ("berdasarkan uraian di atas, dapat disimpulkan bahwa ", "kesimpulannya, "),
+    ("berdasarkan uraian di atas, ", "dengan demikian, "),
+    ("berdasarkan uraian di atas ", "dengan demikian, "),
+    ("memiliki peranan yang sangat signifikan", "berperan penting"),
+    ("memiliki peran yang sangat signifikan", "berperan penting"),
+    ("memiliki peranan yang sangat krusial", "berperan penting"),
+    ("memiliki peran yang sangat krusial", "berperan penting"),
+    ("pada era globalisasi saat ini, ", ""),
+    ("di era globalisasi saat ini, ", ""),
+    ("pada era modern saat ini, ", ""),
+    ("di era modern saat ini, ", ""),
+    ("tidak dapat dipungkiri bahwa ", ""),
+    ("menyelami lebih dalam mengenai ", "mengkaji "),
+    ("menyelami lebih dalam ", "mengkaji "),
+)
+
+
+def sanitize_student_text(text: str) -> str:
+    """Safely remediate AI clichés and unrequested callout formatting."""
+    if not text:
+        return ""
+    result = text
+    for old, new in AI_CLICHE_REPLACEMENTS:
+        result = re.sub(rf"(?i)\b{re.escape(old)}", new, result)
+
+    lines: list[str] = []
+    for line in result.splitlines():
+        cleaned_line = re.sub(r"^>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*", "> ", line)
+        lines.append(cleaned_line)
+    return "\n".join(lines)
+
+
+class HumanStyleAuditRequest(AgentRequest):
+    """Request payload for evaluating compliance with human-doc-output-guard."""
+
+    project: Project
+    draft: str
+    sources: list[Source] = Field(default_factory=list)
+    requested_sections: list[str] | None = None
+    max_table_cols: int = 4
+    max_cell_chars: int = 250
+    user_instruction: str | None = None
+    allow_ai_markers: bool = False
+
+
+class HumanStyleAuditResponse(AgentResponse):
+    """Structured assessment from human_style_audit."""
+
+    passed: bool = True
+    unrequested_additions: list[str] = Field(default_factory=list)
+    ai_style_detected: bool = False
+    ai_style_markers: list[str] = Field(default_factory=list)
+    excessive_structure: bool = False
+    excessive_structure_details: list[str] = Field(default_factory=list)
+    complex_tables: bool = False
+    complex_table_details: list[str] = Field(default_factory=list)
+    fabricated_sources_or_data: bool = False
+    fabricated_details: list[str] = Field(default_factory=list)
+    remediation_suggestions: list[str] = Field(default_factory=list)
+    audit_path: str | None = None
+
+
+class HumanStyleAuditAgent(BaseAgent[HumanStyleAuditRequest, HumanStyleAuditResponse]):
+    """Audit agent enforcing the human-doc-output-guard policy.
+
+    Checks:
+      1. Unrequested additions (unrequested sections, callouts, covers).
+      2. AI style clichés (buzzwords and robotic filler in Indonesian).
+      3. Excessive structure (deep headings, bullet domination).
+      4. Complex tables (>4 cols, long essay paragraphs inside cells, AI rating cols).
+      5. Fabricated sources/data (fake DOIs, internal AI tokens, orphan citations).
+    """
+
+    agent_name = "human_style_audit_agent"
+
+    def _make_error_response(self, *, error_message: str, **extra: object) -> HumanStyleAuditResponse:
+        return HumanStyleAuditResponse(
+            success=False,
+            error_message=error_message,
+            passed=False,
+            remediation_suggestions=[error_message],
+        )
+
+    def _execute(self, request: HumanStyleAuditRequest) -> HumanStyleAuditResponse:
+        draft = request.draft or ""
+        unrequested_additions: list[str] = []
+        ai_style_markers: list[str] = []
+        excessive_structure_details: list[str] = []
+        complex_table_details: list[str] = []
+        fabricated_details: list[str] = []
+        remediation_suggestions: list[str] = []
+
+        # 1. AI style markers check
+        lower_draft = draft.lower()
+        for phrase in AI_STYLE_CLICHE_PHRASES:
+            if phrase.lower() in lower_draft:
+                ai_style_markers.append(phrase)
+                remediation_suggestions.append(f"Ganti atau sederhanakan frasa klise AI '{phrase}'")
+
+        ai_style_detected = bool(ai_style_markers)
+
+        # 2. Unrequested additions check
+        if request.requested_sections is not None:
+            norm_requested = {
+                re.sub(r"[^\w\s]", "", s).strip().lower()
+                for s in request.requested_sections
+                if s.strip()
+            }
+            if request.project.title:
+                norm_requested.add(re.sub(r"[^\w\s]", "", request.project.title).strip().lower())
+            norm_requested.update({"references", "daftar pustaka", "pustaka", "rujukan"})
+
+            for line in draft.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    heading_text = re.sub(r"^#+\s*", "", stripped).strip()
+                    norm_heading = re.sub(r"[^\w\s]", "", heading_text).strip().lower()
+                    if norm_heading and norm_heading not in norm_requested:
+                        if not any(req in norm_heading or norm_heading in req for req in norm_requested):
+                            unrequested_additions.append(f"Bagian tidak diminta: '{heading_text}'")
+                            remediation_suggestions.append(f"Hapus bagian tidak diminta '{heading_text}'")
+
+        # Check for unrequested callout alert boxes
+        callout_matches = re.findall(
+            r"^>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]",
+            draft,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        if callout_matches:
+            unrequested_additions.append("Callout box dekoratif AI terdeteksi")
+            remediation_suggestions.append("Hapus callout box dekoratif dan kembalikan ke format paragraf biasa")
+
+        # 3. Excessive structure check
+        deep_headings = re.findall(r"^(#{4,})\s+(.+)$", draft, flags=re.MULTILINE)
+        if deep_headings:
+            for hashes, htitle in deep_headings:
+                excessive_structure_details.append(f"Heading terlalu dalam (level {len(hashes)}): '{htitle}'")
+            remediation_suggestions.append("Batasi kedalaman heading maksimal level 2 atau 3")
+
+        lines = [ln.strip() for ln in draft.splitlines() if ln.strip()]
+        if len(lines) >= 12:
+            bullet_lines = [
+                ln for ln in lines
+                if ln.startswith(("- ", "* ", "+ ")) or re.match(r"^\d+\.\s+", ln)
+            ]
+            if len(bullet_lines) / len(lines) > 0.6:
+                excessive_structure_details.append(
+                    "Draf didominasi poin-poin/bullet (>60%) alih-alih paragraf esai akademik wajar"
+                )
+                remediation_suggestions.append(
+                    "Ubah sebagian poin-poin menjadi paragraf esai akademik yang mengalir wajar"
+                )
+
+        excessive_structure = bool(excessive_structure_details)
+
+        # 4. Complex tables check
+        in_table = False
+        current_table_lines: list[str] = []
+        for line in draft.splitlines():
+            s_line = line.strip()
+            if s_line.startswith("|") and s_line.endswith("|"):
+                in_table = True
+                current_table_lines.append(s_line)
+            else:
+                if in_table and current_table_lines:
+                    self._check_table(current_table_lines, request, complex_table_details, remediation_suggestions)
+                    current_table_lines = []
+                in_table = False
+        if in_table and current_table_lines:
+            self._check_table(current_table_lines, request, complex_table_details, remediation_suggestions)
+
+        complex_tables = bool(complex_table_details)
+
+        # 5. Fabricated sources or data check
+        fake_dois = re.findall(r"\b10\.(?:9999|0000|1234\/fake)\b", draft, flags=re.IGNORECASE)
+        if fake_dois:
+            fabricated_details.append(f"Pola DOI fiktif/palsu terdeteksi: {fake_dois}")
+            remediation_suggestions.append("Hapus atau ganti DOI palsu dengan DOI resmi yang terverifikasi")
+
+        tokens = detect_internal_tokens(draft)
+        if tokens:
+            fabricated_details.extend([f"Token internal AI bocor: '{t}'" for t in tokens])
+            remediation_suggestions.append("Bersihkan token internal AI dari draf")
+
+        year_orphans = detect_orphan_author_year_citations(draft, request.sources)
+        if year_orphans:
+            fabricated_details.extend([f"Sitasi yatim tanpa sumber terverifikasi: '{yo}'" for yo in year_orphans])
+            remediation_suggestions.append("Pastikan setiap sitasi terhubung ke sumber resmi di metadata proyek")
+
+        # Fake placeholder checks
+        placeholders = re.findall(r"\[(?:masukkan|isi\s+sendiri|placeholder|TODO|LOREM\s+IPSUM)[^\]]*\]", draft, flags=re.IGNORECASE)
+        if placeholders:
+            fabricated_details.extend([f"Teks placeholder belum terisi: '{p}'" for p in placeholders])
+            remediation_suggestions.append("Lengkapi data yang belum terisi atau beri catatan penanda jujur")
+
+        fabricated_sources_or_data = bool(fabricated_details)
+
+        passed = not (
+            unrequested_additions
+            or (ai_style_detected and not request.allow_ai_markers)
+            or excessive_structure
+            or complex_tables
+            or fabricated_sources_or_data
+        )
+
+        payload = {
+            "passed": passed,
+            "unrequested_additions": unrequested_additions,
+            "ai_style_detected": ai_style_detected,
+            "ai_style_markers": ai_style_markers,
+            "excessive_structure": excessive_structure,
+            "excessive_structure_details": excessive_structure_details,
+            "complex_tables": complex_tables,
+            "complex_table_details": complex_table_details,
+            "fabricated_sources_or_data": fabricated_sources_or_data,
+            "fabricated_details": fabricated_details,
+            "remediation_suggestions": remediation_suggestions,
+        }
+
+        path = request.project.artifact_path(ProjectArtifact.HUMAN_STYLE_AUDIT)
+        backup_file(path, root=request.project.directory)
+        write_json(path, payload, root=request.project.directory, overwrite=True)
+
+        return HumanStyleAuditResponse(
+            passed=passed,
+            unrequested_additions=unrequested_additions,
+            ai_style_detected=ai_style_detected,
+            ai_style_markers=ai_style_markers,
+            excessive_structure=excessive_structure,
+            excessive_structure_details=excessive_structure_details,
+            complex_tables=complex_tables,
+            complex_table_details=complex_table_details,
+            fabricated_sources_or_data=fabricated_sources_or_data,
+            fabricated_details=fabricated_details,
+            remediation_suggestions=remediation_suggestions,
+            audit_path=str(path),
+        )
+
+    @staticmethod
+    def _check_table(
+        table_lines: list[str],
+        request: HumanStyleAuditRequest,
+        details: list[str],
+        remediations: list[str],
+    ) -> None:
+        if len(table_lines) < 2:
+            return
+        header_cells = [c.strip() for c in table_lines[0].split("|")[1:-1]]
+        num_cols = len(header_cells)
+        if num_cols > request.max_table_cols:
+            details.append(
+                f"Tabel memiliki {num_cols} kolom, melebihi batas wajar {request.max_table_cols} kolom"
+            )
+            remediations.append("Sederhanakan tabel menjadi 2-4 kolom ringkas")
+
+        banned_col_terms = ("skor ai", "rating ai", "ai score", "skor evaluasi", "tingkat kepentingan ai")
+        for cell in header_cells:
+            for term in banned_col_terms:
+                if term in cell.lower():
+                    details.append(f"Kolom analisis subjektif AI tidak diminta: '{cell}'")
+                    remediations.append(f"Hapus kolom subjektif '{cell}'")
+
+        for row_str in table_lines[2:]:
+            cells = [c.strip() for c in row_str.split("|")[1:-1]]
+            for cell in cells:
+                if len(cell) > request.max_cell_chars:
+                    snippet = cell[:40] + "..."
+                    details.append(f"Sel tabel terlalu panjang ({len(cell)} karakter): '{snippet}'")
+                    remediations.append("Pindahkan esai panjang dari dalam sel tabel ke paragraf pembahasan di luar tabel")
+                    break
+
+
+NaturalStudentOutputGuard = HumanStyleAuditAgent

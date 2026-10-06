@@ -13,7 +13,9 @@ audit can trace prose back to a page or section.
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -23,6 +25,8 @@ __all__ = [
     "EvidenceRelationship",
     "EvidenceStrength",
     "ExtractionMethod",
+    "EvidenceType",
+    "ReadingDepth",
     "EvidenceLocation",
     "Evidence",
     "SUPPORTING_RELATIONSHIPS",
@@ -68,6 +72,30 @@ class ExtractionMethod(StrEnum):
     TABULAR_VALUE = "TABULAR_VALUE"
     #: Supplied directly by the user.
     USER_PROVIDED = "USER_PROVIDED"
+
+
+class EvidenceType(StrEnum):
+    """Epistemic classification of evidence relative to a claim.
+
+    Independent of EvidenceRelationship (direction) and EvidenceStrength (weight).
+    """
+
+    DIRECT = "DIRECT"
+    PARTIAL = "PARTIAL"
+    THEORETICAL = "THEORETICAL"
+    FUNCTIONAL_EQUIVALENT = "FUNCTIONAL_EQUIVALENT"
+    BACKGROUND = "BACKGROUND"
+    CONTRADICTORY = "CONTRADICTORY"
+    NOT_SUPPORTED = "NOT_SUPPORTED"
+
+
+class ReadingDepth(StrEnum):
+    """How deeply a source was read during evidence extraction."""
+
+    FULL_TEXT = "FULL_TEXT"
+    ABSTRACT_ONLY = "ABSTRACT_ONLY"
+    METADATA_ONLY = "METADATA_ONLY"
+    UNAVAILABLE = "UNAVAILABLE"
 
 
 #: Relationships that can contribute positive support to a claim.
@@ -166,6 +194,9 @@ class Evidence(BaseRecord):
 
     id_prefix: str = Field(default="evd", exclude=True, repr=False)
 
+    # Override BaseRecord default to reflect the v1.1 schema additions.
+    schema_version: str = "1.1"
+
     claim_id: str
     source_id: str
     evidence_text: str = Field(min_length=1)
@@ -179,12 +210,49 @@ class Evidence(BaseRecord):
     extracted_by: str | None = None
     notes: str | None = None
 
+    # --- Evidence Intelligence fields (schema v1.1) ---
+    evidence_type: EvidenceType = EvidenceType.NOT_SUPPORTED
+    reading_depth: ReadingDepth = ReadingDepth.UNAVAILABLE
+
+    # Structured extraction fields — all optional, never fabricated
+    normalized_finding: str | None = None
+    population: str | None = None
+    sample_size: str | None = None
+    methodology: str | None = None
+    variables: list[str] | None = None
+    instruments: list[str] | None = None
+    statistical_result: str | None = None
+    limitations: str | None = None
+
     @model_validator(mode="after")
     def _sync_verbatim_flag(self) -> "Evidence":
         # A paraphrase can never be presented as a quotation.
         if self.extraction_method is ExtractionMethod.MODEL_PARAPHRASE and self.verbatim:
             object.__setattr__(self, "verbatim", False)
         return self
+
+    @model_validator(mode="after")
+    def _check_reading_depth_constraints(self) -> "Evidence":
+        """ABSTRACT_ONLY depth prevents VERBATIM_FULLTEXT extraction."""
+        if (
+            self.reading_depth == ReadingDepth.ABSTRACT_ONLY
+            and self.extraction_method == ExtractionMethod.VERBATIM_FULLTEXT
+        ):
+            raise ValueError(
+                "extraction_method cannot be VERBATIM_FULLTEXT when "
+                "reading_depth is ABSTRACT_ONLY"
+            )
+        return self
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        data = super().model_dump(*args, **kwargs)
+        if "evidence_type" not in self.model_fields_set:
+            data.pop("evidence_type", None)
+        return data
+
+    def model_dump_json(self, *args: Any, **kwargs: Any) -> str:
+        data = self.model_dump(mode="json")
+        return json.dumps(data, ensure_ascii=False, default=str)
 
     @property
     def is_supporting(self) -> bool:

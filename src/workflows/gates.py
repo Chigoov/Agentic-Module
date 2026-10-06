@@ -23,16 +23,35 @@ Status flags on the input JSON are *not* evidence. What the gate trusts:
     verbatim quote whose source carries no verification evidence is rejected).
 """
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
+
 from src.core.errors import HumanReviewRequired
 from src.schemas.claim import Claim
-from src.schemas.evidence import Evidence, SUPPORTING_RELATIONSHIPS
-from src.schemas.source import Source, is_verified
+from src.schemas.evidence import (
+    Evidence,
+    EvidenceRelationship,
+    EvidenceType,
+    ReadingDepth,
+    SUPPORTING_RELATIONSHIPS,
+)
+from src.schemas.source import RetrievalStatus, Source, is_verified
 from src.tools.citation_manager import (
     detect_internal_tokens,
     detect_orphan_author_year_citations,
 )
-__all__ = ["AcademicGateError", "GateResult", "check_academic_integrity", "scan_output_text"]
+
+__all__ = [
+    "AcademicGateError",
+    "DOI_PATTERN",
+    "GateResult",
+    "check_academic_integrity",
+    "create_review_queue_from_gate_result",
+    "scan_output_text",
+]
+
+DOI_PATTERN = re.compile(r"^10\.\d{4,}/\S+$")
 @dataclass
 class GateResult:
     """Structured outcome of the academic integrity gate."""
@@ -147,7 +166,154 @@ def check_academic_integrity(
             result.violations.append(
                 f"verbatim quote in evidence {item.id} cites unverified source {item.source_id}"
             )
+
+    # -- 7. DOI format validation (Req 10.1, 10.2, Property 12).
+    for source in sources:
+        if source.doi is not None and not DOI_PATTERN.match(source.doi):
+            result.violations.append(
+                f"invalid DOI format for source {source.id}: {source.doi}"
+            )
+
+    # -- 8. Evidence type / relationship mismatch (Req 10.3, Property 13).
+    for item in evidence:
+        if (
+            item.evidence_type == EvidenceType.CONTRADICTORY
+            and item.relationship == EvidenceRelationship.SUPPORTS
+        ):
+            result.violations.append(
+                f"evidence type/relationship mismatch for evidence {item.id}"
+            )
+
+    # -- 9. Empty support on SUPPORTED claim (Req 10.6).
+    for claim in claims:
+        if str(claim.status) == "SUPPORTED" and not claim.supporting_evidence:
+            result.violations.append(
+                f"claim {claim.id} marked SUPPORTED with no supporting evidence"
+            )
+
+    # -- 10. Overclaim detection (Req 10.4, Property 14).
+    for claim in claims:
+        if str(claim.status) == "SUPPORTED" and claim.supporting_evidence:
+            supporting_items = [e for e in evidence if e.id in claim.supporting_evidence]
+            if supporting_items and all(
+                e.evidence_type in (EvidenceType.FUNCTIONAL_EQUIVALENT, EvidenceType.THEORETICAL)
+                for e in supporting_items
+            ):
+                result.violations.append(
+                    f"claim {claim.id} overclaimed: no direct evidence supports the claim"
+                )
+
+    # -- 11. Abstract-only evidence review reason (Req 10.5, Property 15).
+    for claim in claims:
+        if str(claim.status) == "SUPPORTED" and claim.supporting_evidence:
+            supporting_items = [e for e in evidence if e.id in claim.supporting_evidence]
+            if supporting_items and all(
+                e.reading_depth == ReadingDepth.ABSTRACT_ONLY for e in supporting_items
+            ):
+                result.review_reasons.append(
+                    f"claim {claim.id} supported only by abstract-level evidence"
+                )
+
+    # -- 12. Unverified / unretrieved source check (Req 10.7).
+    for item in evidence:
+        source = source_by_id.get(item.source_id)
+        if source is not None:
+            is_explicit = (
+                "publisher_verified" in source.model_fields_set
+                or "retrieval_status" in source.model_fields_set
+            )
+            if (
+                (is_explicit or not is_verified(source.state))
+                and not source.publisher_verified
+                and source.retrieval_status == RetrievalStatus.NOT_ATTEMPTED
+            ):
+                result.violations.append(
+                    f"evidence {item.id} cites unverified, unretrieved source {item.source_id}"
+                )
+
+    # -- 13. Publisher-unverified cited source review reason (Req 4.5, Property 27).
+    for source_id in sorted(cited_source_ids):
+        source = source_by_id.get(source_id)
+        if (
+            source is not None
+            and "publisher_verified" in source.model_fields_set
+            and not source.publisher_verified
+        ):
+            result.review_reasons.append(
+                f"source {source_id} cited in claim but publisher_verified is False"
+            )
+
+    # -- 14. Source not indexed review reason (Req 5.4, Property 28).
+    for source in sources:
+        if "index_status" in source.model_fields_set:
+            if not source.index_status or not any(source.index_status.values()):
+                result.review_reasons.append(
+                    f"source {source.id} not indexed in any queried database"
+                )
+
     return result
+
+
+def create_review_queue_from_gate_result(
+    result: GateResult,
+    *,
+    claims: list[Claim] | None = None,
+    sources: list[Source] | None = None,
+) -> ReviewQueue:
+    """Convert GateResult review reasons and semantic review claims into ReviewItem records."""
+    from src.schemas.claim import ClaimImportance
+    from src.schemas.review import ReviewItem, ReviewQueue
+
+    queue = ReviewQueue()
+    for reason in result.review_reasons:
+        # Determine item_type and item_id if possible
+        item_type = "system"
+        item_id = "general"
+        if "claim " in reason:
+            item_type = "claim"
+            parts = reason.split("claim ")
+            if len(parts) > 1:
+                item_id = parts[1].split()[0]
+        elif "source " in reason:
+            item_type = "source"
+            parts = reason.split("source ")
+            if len(parts) > 1:
+                item_id = parts[1].split()[0]
+
+        queue.add(
+            ReviewItem(
+                item_type=item_type,
+                item_id=item_id,
+                severity="MEDIUM",
+                reason=reason,
+                recommended_action="Investigate and verify before publication",
+                status="PENDING",
+            )
+        )
+
+    # Semantic review claims (Req 13.7, Property 26)
+    if claims:
+        severity_map = {
+            ClaimImportance.CRITICAL: "CRITICAL",
+            ClaimImportance.HIGH: "HIGH",
+            ClaimImportance.MEDIUM: "MEDIUM",
+            ClaimImportance.LOW: "LOW",
+        }
+        for claim in claims:
+            if claim.requires_semantic_review and claim.semantic_review is None:
+                sev = severity_map.get(claim.importance, "MEDIUM")
+                queue.add(
+                    ReviewItem(
+                        item_type="claim",
+                        item_id=claim.id,
+                        severity=sev,
+                        reason=f"Claim {claim.id} requires semantic review",
+                        recommended_action="Perform semantic review with external evaluator",
+                        status="PENDING",
+                    )
+                )
+
+    return queue
 def scan_output_text(
     *,
     draft: str,

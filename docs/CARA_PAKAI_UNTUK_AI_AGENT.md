@@ -16,6 +16,8 @@ cd "C:\jalan\ke\folder\checkout\anda"
 ```powershell
 python -m src check
 python -m src plan "topik riset"
+python -m src research --topic "topik riset"
+python -m src research --input-json research_request.json
 python -m src run-academic --input-json input.json
 python -m src runs --input-json input.json
 python -m src runs --input-json input.json --prune --keep 20
@@ -24,6 +26,23 @@ python -m src monitor --port 8000
 ```
 
 `python -m src --check` tetap didukung untuk kompatibilitas lama.
+
+## Mode Riset Otonom (Deep Research)
+
+Untuk menjalankan alur riset lengkap langsung dari topik mentah tanpa perlu menyiapkan `sources`, `claims`, dan `evidence` secara manual:
+
+```powershell
+python -m src research --topic "Dampak perubahan iklim terhadap ketahanan pangan"
+```
+
+Alur yang berjalan:
+`task_analysis` → `planning` → `discovery` (DOAB, Open Library, Crossref) → `deduplication` → `ranking` → `verification` → `access_check` → `retrieval` (direct download PDF/abstract) → `evidence_extraction` (berbasis halaman/locator) → `claim_verification` → `conflict_detection` → `synthesis` → `writing` → `citation_audit` → `fact_audit` → `docx_generation` atau `human_review`.
+
+Artifact yang dihasilkan di folder project:
+- `draft.md`: naskah ilmiah dengan sitasi ter-disambiguasi (misal `Smith, 2023a` dan `Smith, 2023b`)
+- `citation_map.json`: pemetaan relasional label sitasi, source ID, claim ID, evidence ID, dan nomor halaman/locator
+- `review_queue.json`: daftar kasus yang memerlukan tinjauan manusia (lisensi tidak jelas, borrow-only, PDF scan, dll.)
+- `final.docx`: dokumen Word final (hanya jika lolos seluruh audit dan tidak ada isu blocking)
 
 ## Localhost API
 

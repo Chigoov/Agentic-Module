@@ -130,6 +130,13 @@ Create a plan from a topic:
 python -m src plan "your research topic"
 ```
 
+Run end-to-end Deep Research Mode from a raw topic or JSON:
+
+```bash
+python -m src research --topic "your research topic"
+python -m src research --input-json research_request.json
+```
+
 Run Academic Writing Mode from a JSON payload:
 
 ```bash
@@ -178,6 +185,10 @@ and a local workflow monitor.
 | PubMed | `src/tools/pubmed.py` | ✅ VERIFIED (real run) |
 | Semantic Scholar | `src/tools/semantic_scholar.py` | ⚠️ NOT_VERIFIED (HTTP 429, needs API key) |
 | Publish or Perish | `src/tools/publish_or_perish.py` | ✅ VERIFIED (real run) |
+| DOAB (Open Access Books) | `src/tools/doab.py` | ✅ VERIFIED_LIVE (real REST run) |
+| Open Library | `src/tools/open_library.py` | ✅ VERIFIED_LIVE (real search.json run) |
+| Model Router | `src/routing/model_router.py` | 🟡 PENDING_CONFIGURATION / TESTED_OFFLINE |
+| PDF Parser (Page-based) | `src/tools/pdf_parser.py` | ✅ TESTED_OFFLINE |
 
 Semantic Scholar was **not** promoted to VERIFIED because the shared egress
 IP returns HTTP 429 without an API key. Set `SEMANTIC_SCHOLAR_API_KEY` and
