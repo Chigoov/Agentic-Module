@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from docx import Document
+from conftest import fixture_source
+from src.schemas.source import Source, SourceState
+from src.tools.reference_formatter import format_reference_list
 
 from src.schemas.citation import ReferenceEntry, ReferenceList
 from src.schemas.project import Project
@@ -31,20 +34,14 @@ def test_docx_generation_requires_passed_audits(tmp_path: Path) -> None:
 
 
 def test_docx_generation_writes_readable_docx(tmp_path: Path) -> None:
-    refs = ReferenceList(
-        entries=[
-            ReferenceEntry(
-                citation_key="smith2024",
-                source_id="src_1",
-                formatted="Smith, J. (2024). Paper. Journal. https://doi.org/10.1/x",
-            )
-        ]
-    )
+    source = fixture_source(Source(id="src_1", title="Paper", authors=["Smith, J."], year=2024, venue="Journal", state=SourceState.APPROVED))
+    refs = format_reference_list([source])
     response = DocxGenerationTool().execute(
         DocxGenerationRequest(
             project=_project(tmp_path),
-            draft="# Title\n\n## Findings\n\nThe program improved attendance.",
+            draft="# Title\n\n## Findings\n\nThe program improved attendance (Smith, 2024).",
             reference_list=refs,
+            sources=[source],
             citation_audit_passed=True,
             fact_audit_passed=True,
         )

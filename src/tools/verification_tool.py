@@ -21,6 +21,11 @@ never from local guessing.
 from __future__ import annotations
 
 from typing import Any, Iterable
+import hashlib
+import json
+from datetime import datetime, timezone
+from src.core.paths import get_paths
+from src.tools.source_content import stored_metadata
 
 from src.core.config import get_config
 from src.core.logging import get_logger
@@ -82,6 +87,11 @@ class VerificationEngine:
     # ------------------------------------------------------------------ public
     def verify(self, source: Source) -> VerificationResult:
         """Produce a verification report and recommended state for ``source``."""
+        stored = stored_metadata(source)
+        if stored and stored.get("report"):
+            report = VerificationReport.model_validate(stored["report"])
+            if report.source_id == source.id and report.level_status(VerificationLevel.EXISTENCE) == VerificationCheckStatus.PASSED and report.level_status(VerificationLevel.METADATA) == VerificationCheckStatus.PASSED and report.overall_status in {SourceState.METADATA_VERIFIED, SourceState.DOI_VERIFIED, SourceState.PUBLISHER_VERIFIED}:
+                return VerificationResult(report, report.overall_status)
         report = VerificationReport(source_id=source.id, provenance=Provenance(origin="verification_engine"))
         if not self._enabled:
             report.add_check(self._check(
@@ -101,6 +111,16 @@ class VerificationEngine:
 
         report.metadata_match_ratio = self._best_match_ratio(corroborations)
         report.overall_status = self._recommend(report)
+        if corroborations and report.overall_status in {SourceState.METADATA_VERIFIED, SourceState.DOI_VERIFIED, SourceState.PUBLISHER_VERIFIED}:
+            snapshot = {"source_id": source.id, "title": source.title, "doi": source.doi,
+                "verified_at": datetime.now(timezone.utc).isoformat(), "report": report.to_dict(),
+                "provider_records": [{"provider": name, "record": record.model_dump(mode="json")} for name, record, _ in corroborations]}
+            content = json.dumps(snapshot, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            digest = hashlib.sha256(content).hexdigest()
+            target = get_paths().cache_dir / "verification" / (digest + ".json")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+            source.metadata["verification_artifact"] = {"path": str(target), "sha256": digest}
         return VerificationResult(report, report.overall_status)
 
     # ------------------------------------------------------------ corroborate
@@ -177,6 +197,10 @@ class VerificationEngine:
                 provider=name,
                 confidence=ratio,
             ))
+            if source.doi:
+                report.add_check(self._check(name="metadata_doi_identity", level=VerificationLevel.METADATA,
+                    status=self._pass_fail(normalize_doi(source.doi) == normalize_doi(match.doi)),
+                    detail=f"DOI corroboration from {name}: {match.doi or 'not available'}", provider=name))
         # Material identity mismatch (audit A03): the candidate may carry a DOI
         # or title whose provider record names a different work. Corroboration
         # is *not* optional here — the provider records retrieved during lookup

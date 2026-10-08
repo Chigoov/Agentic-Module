@@ -118,13 +118,16 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
 
         manager = CitationManager()
 
-        # Register only sources that are actually referenced by writable claims.
-        for claim in writable:
+        def section_claim_ids(section):
+            return set(section.claim_ids) | set().union(*(section_claim_ids(child) for child in section.subsections))
+        rendered_ids = set().union(*(section_claim_ids(section) for section in request.outline.sections))
+        # Register only sources whose claims actually appear in this outline.
+        for claim in (claim for claim in writable if claim.id in rendered_ids):
             for source_id in claim.supporting_sources:
                 if source_id in source_by_id:
                     manager.register_source(source_by_id[source_id])
             for evidence in evidence_by_claim.get(claim.id, []):
-                if evidence.source_id in source_by_id:
+                if evidence.source_id in source_by_id and (evidence.is_citable_quotation or (not claim.supporting_sources and evidence.is_supporting)):
                     manager.register_source(source_by_id[evidence.source_id])
 
         lines: list[str] = [f"# {request.outline.title}", ""]
@@ -166,7 +169,8 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
 
         # Build and persist canonical citation_map.json artifact (Bagian G)
         citation_map_data = build_citation_map(
-            claims=writable, evidence=request.evidence, citation_manager=manager
+            claims=[c for c in writable if c.id in rendered_ids],
+            evidence=[e for e in request.evidence if e.claim_id in rendered_ids], citation_manager=manager
         )
         map_path = request.project.artifact_path(ProjectArtifact.CITATION_MAP)
         backup_file(map_path, root=request.project.directory)
@@ -185,6 +189,8 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             "writable": len(writable),
             "excluded": len(excluded),
             "cited_sources": len(reference_list.entries),
+            "available_sources": len(request.sources),
+            "cited_source_ids": [entry.source_id for entry in reference_list.entries],
             "citation_map_path": str(map_path),
         }
         return response

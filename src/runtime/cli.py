@@ -16,6 +16,7 @@ from src.core.errors import PathSafetyError
 from src.core.paths import PathResolutionError, get_paths
 from src.core.storage import ensure_within, write_json
 from src.runtime.bootstrap import bootstrap, health_check
+from src.runtime.execution import create_execution_project, ensure_workflow_ready
 from src.runtime.monitor import serve
 from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
@@ -23,7 +24,7 @@ from src.schemas.outline import Outline
 from src.schemas.project import Project
 from src.schemas.source import Source
 from src.tools.verification_tool import VerificationEngine
-from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
+from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow, review_options
 
 __all__ = ["main"]
 
@@ -36,7 +37,7 @@ def _read_json(path: str) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def _project_from_payload(payload: dict[str, Any]) -> Project:
+def _project_from_payload(payload: dict[str, Any], *, command: str) -> Project:
     paths = get_paths()
     config = get_config()
     allowed_workspaces = {ws.casefold() for ws in config.projects.allowed_workspaces}
@@ -62,6 +63,9 @@ def _project_from_payload(payload: dict[str, Any]) -> Project:
             citation_style=payload.get("citation_style", "APA7"),
             language=payload.get("language", "id"),
             user_request=payload.get("topic", ""),
+            output_type=payload.get("output_type", "academic_draft"),
+            required_sections=payload.get("required_sections", []),
+            research_options=payload.get("research_options", {}),
         )
 
     # Security boundary validation:
@@ -81,8 +85,17 @@ def _project_from_payload(payload: dict[str, Any]) -> Project:
                 root=str(paths.workspace_root),
             )
 
-    project.directory.mkdir(parents=True, exist_ok=True)
-    return project
+    if payload.get("resume"):
+        manifest = project.directory / "project.json"
+        if not manifest.is_file():
+            raise ValueError("Resume requires the actual existing project manifest")
+        return Project.model_validate(_read_json(str(manifest)))
+    return create_execution_project(
+        user_request=project.user_request or project.title or project.name,
+        command=command,
+        workspace=project.workspace,
+        template=project,
+    )
 
 
 def _cmd_check(_args: argparse.Namespace) -> int:
@@ -99,6 +112,17 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     if args.input_json:
         payload = _read_json(args.input_json)
         user_request = str(payload.get("topic") or payload.get("user_request") or "")
+    project: Project | None = None
+    try:
+        project = create_execution_project(
+            user_request=user_request,
+            command="plan",
+            workspace=args.workspace,
+        )
+        readiness = ensure_workflow_ready(project=project)
+    except Exception as exc:
+        print(_json({"success": False, "error": str(exc), "project_path": str(project.directory) if project else None}), file=sys.stderr)
+        return 1
     task_response = TaskAnalyzerAgent().execute(TaskAnalyzerRequest(user_request=user_request, workspace=args.workspace))
     if not task_response.success or task_response.task is None:
         print(_json({"success": False, "error": task_response.error_message}), file=sys.stderr)
@@ -106,13 +130,14 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     plan = ResearchPlannerAgent().execute(
         ResearchPlannerRequest(task=task_response.task, keywords=task_response.keywords)
     ).plan
-    print(_json({"success": True, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan}))
+    print(_json({"success": True, "project_path": str(project.directory), "readiness": readiness, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan}))
     return 0
 
 
 def _cmd_run_academic(args: argparse.Namespace) -> int:
     payload = _read_json(args.input_json)
-    project = _project_from_payload(payload)
+    if getattr(args, "resume", False): payload["resume"] = True
+    project = _project_from_payload(payload, command="run-academic")
     claims = [Claim.model_validate(item) for item in payload.get("claims", [])]
     evidence = [Evidence.model_validate(item) for item in payload.get("evidence", [])]
     sources = [Source.model_validate(item) for item in payload.get("sources", [])]
@@ -134,6 +159,7 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
             generate_docx=not args.no_docx,
             command="run-academic",
             input_path=args.input_json,
+            **review_options(payload, project),
         )
     )
     print(_json(response.model_dump(mode="json")))
@@ -143,7 +169,8 @@ def _cmd_run_academic(args: argparse.Namespace) -> int:
 def _cmd_research(args: argparse.Namespace) -> int:
     if args.input_json:
         payload = _read_json(args.input_json)
-        project = _project_from_payload(payload)
+        if getattr(args, "resume", False): payload["resume"] = True
+        project = _project_from_payload(payload, command="research")
         user_request = str(payload.get("topic") or payload.get("user_request") or project.user_request or "")
         claims = [Claim.model_validate(item) for item in payload.get("claims", [])]
         evidence = [Evidence.model_validate(item) for item in payload.get("evidence", [])]
@@ -153,23 +180,20 @@ def _cmd_research(args: argparse.Namespace) -> int:
             SemanticReview.model_validate(item)
             for item in payload.get("semantic_reviews", [])
         ]
+        review_config = review_options(payload, project)
     elif args.topic:
         user_request = args.topic.strip()
-        safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", user_request.lower())[:30].strip("_") or "research_run"
-        proj_dir = get_paths().workspace_path(args.workspace) / safe_name
-        proj_dir.mkdir(parents=True, exist_ok=True)
-        project = Project(
-            name=safe_name,
-            workspace=args.workspace,
-            path=str(proj_dir),
-            title=user_request,
+        project = create_execution_project(
             user_request=user_request,
+            command="research",
+            workspace=args.workspace,
         )
         claims = []
         evidence = []
         sources = []
         outline = None
         semantic_reviews = []
+        review_config = {}
     else:
         print(_json({"success": False, "error": "Either --topic or --input-json must be provided"}), file=sys.stderr)
         return 1
@@ -191,6 +215,7 @@ def _cmd_research(args: argparse.Namespace) -> int:
             max_sources=getattr(args, "max_sources", 10),
             command="research",
             input_path=getattr(args, "input_json", None),
+            **review_config,
         )
     )
     print(_json(response.model_dump(mode="json")))
@@ -200,8 +225,12 @@ def _cmd_research(args: argparse.Namespace) -> int:
 def _resolve_project_dir(args: argparse.Namespace) -> Path | None:
     target_path: Path | None = None
     explicitly_specified = False
+    explicit_project = getattr(args, "project_flag", None) or getattr(args, "project", None)
 
-    if getattr(args, "input_json", None):
+    if explicit_project:
+        explicitly_specified = True
+        target_path = Path(explicit_project).resolve()
+    elif getattr(args, "input_json", None):
         explicitly_specified = True
         try:
             payload = _read_json(args.input_json)
@@ -210,24 +239,33 @@ def _resolve_project_dir(args: argparse.Namespace) -> Path | None:
                 target_path = Path(raw_path).resolve()
         except Exception:
             pass
-    elif getattr(args, "project_flag", None) or getattr(args, "project", None):
-        proj_str = getattr(args, "project_flag", None) or getattr(args, "project", "")
-        if proj_str:
-            explicitly_specified = True
-            target_path = Path(proj_str).resolve()
 
     if not explicitly_specified and (target_path is None or not target_path.exists()):
         try:
             paths = get_paths()
             config = get_config()
-            for ws in paths.project_workspaces(config.projects.allowed_workspaces):
-                candidate_runs = [p for p in ws.glob("*/runs") if p.is_dir() and not paths.is_inside_system_root(p)]
-                if candidate_runs:
-                    target_path = candidate_runs[0].parent
-                    break
+            candidate_runs = [p for ws in paths.project_workspaces(config.projects.allowed_workspaces)
+                for p in ws.glob("*/runs") if p.is_dir() and not paths.is_inside_system_root(p)]
+            if candidate_runs:
+                target_path = max(candidate_runs, key=lambda p: p.stat().st_mtime).parent
         except Exception:
             pass
 
+    if target_path is not None and getattr(args, "input_json", None) and not explicit_project:
+        config = get_config()
+        candidates = []
+        for workspace in get_paths().project_workspaces(config.projects.allowed_workspaces):
+            for manifest in workspace.glob("*/project.json"):
+                try:
+                    data = _read_json(str(manifest))
+                except (OSError, ValueError):
+                    continue
+                if data.get("origin_project_path") and Path(data["origin_project_path"]).resolve() == target_path:
+                    run_id = getattr(args, "run_id", None)
+                    if not run_id or any(p.name == run_id or p.name.endswith(run_id) for p in (manifest.parent / "runs").glob("*")):
+                        candidates.append(manifest)
+        if candidates:
+            target_path = max(candidates, key=lambda p: p.stat().st_mtime).parent
     if target_path is not None:
         paths = get_paths()
         if paths.is_inside_system_root(target_path):
@@ -530,26 +568,29 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
 
     queue_path = target_path / ProjectArtifact.REVIEW_QUEUE.value
     queue = ReviewQueue.load(queue_path)
-    critical_pending = [i for i in queue.items if i.severity == "CRITICAL" and i.status == "PENDING"]
+    critical_pending = queue.blocking_items()
     if critical_pending:
         print(_json({
             "success": False,
-            "error": "Cannot finalize: critical review items remain pending in review queue",
+            "error": "Cannot finalize: HIGH/CRITICAL or explicitly blocking review items remain pending",
             "pending_critical_items": [i.to_dict() for i in critical_pending],
         }), file=sys.stderr)
         return 1
 
-    project = Project(
-        name=target_path.name,
-        workspace=target_path.parent.name,
-        path=str(target_path),
-        title=target_path.name.replace("_", " ").title(),
-    )
+    manifest = target_path / "project.json"
+    project = Project.model_validate(_read_json(str(manifest))) if manifest.is_file() else Project(
+        name=target_path.name, workspace=target_path.parent.name, path=str(target_path), title=target_path.name)
+    options_path = target_path / "workflow_options.json"
+    options = _read_json(str(options_path)) if options_path.is_file() else project.research_options
 
     sources: list[Source] = []
     vsrc_path = target_path / ProjectArtifact.VERIFIED_SOURCES.value
     if vsrc_path.is_file():
         sources = [Source.model_validate(item) for item in _read_json(str(vsrc_path))]
+    else:
+        snapshots = sorted((target_path / "runs").glob("*/sources_snapshot.json"), reverse=True)
+        if snapshots:
+            sources = [Source.model_validate(item) for item in _read_json(str(snapshots[0]))]
 
     claims: list[Claim] = []
     claims_path = target_path / ProjectArtifact.CLAIMS.value
@@ -617,6 +658,7 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
             verification_engine=VerificationEngine(),
             generate_docx=not getattr(args, "no_docx", False),
             command="finalize",
+            **review_options(options, project),
         )
     )
 
@@ -640,6 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
     academic = sub.add_parser("run-academic", help="Run Academic Writing Mode from JSON")
     academic.add_argument("--input-json", required=True)
     academic.add_argument("--no-docx", action="store_true")
+    academic.add_argument("--resume", action="store_true")
     academic.set_defaults(func=_cmd_run_academic)
 
     research = sub.add_parser("research", help="Run end-to-end Deep Research Mode")
@@ -649,6 +692,7 @@ def build_parser() -> argparse.ArgumentParser:
     research.add_argument("--min-sources", type=int, default=2)
     research.add_argument("--max-sources", type=int, default=10)
     research.add_argument("--no-docx", action="store_true")
+    research.add_argument("--resume", action="store_true")
     research.set_defaults(func=_cmd_research)
 
     monitor = sub.add_parser("monitor", help="Run localhost API and workflow monitor")

@@ -24,7 +24,7 @@ def test_retrieves_existing_abstract(tmp_path: Path) -> None:
     assert response.success is True
     assert response.parsed_text == "Important abstract text."
     assert Path(response.document_path).read_text(encoding="utf-8") == "Important abstract text."
-    assert source.state is SourceState.FULLTEXT_RETRIEVED
+    assert source.state is SourceState.DISCOVERED
 
 
 def test_retrieves_and_parses_html_url(tmp_path: Path) -> None:
@@ -42,7 +42,7 @@ def test_retrieves_and_parses_html_url(tmp_path: Path) -> None:
         RetrievalRequest(project=project, source=source)
     )
     assert response.success is True
-    assert response.parsed_text == "Title Evidence paragraph."
+    assert response.parsed_text == "Title\nEvidence paragraph."
     assert response.document_path.endswith(".html")
     assert Path(response.document_path).is_file()
 

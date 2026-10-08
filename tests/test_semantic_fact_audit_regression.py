@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import pytest
+from conftest import fixture_source
 
 from src.agents.audit import (
     FactAuditAgent,
@@ -54,7 +55,7 @@ def _project(tmp_path: Path, name: str = "proj") -> Project:
 
 
 def _valid_source() -> Source:
-    return Source(
+    source = Source(
         id="src_valid_1",
         title="Valid Scientific Study on Attention Mechanisms",
         authors=["Vaswani, A.", "Shazeer, N."],
@@ -67,6 +68,8 @@ def _valid_source() -> Source:
         state=SourceState.APPROVED,
         abstract="Transformers rely on multi-head attention mechanisms to model dependencies without recurrent connections.",
     )
+
+    return fixture_source(source)
 
 
 class _FakeMatchingProvider:
@@ -99,6 +102,7 @@ def _valid_evidence(claim_id: str, source_id: str) -> Evidence:
         source_id=source_id,
         evidence_text="Transformers rely on multi-head attention mechanisms to model dependencies without recurrent connections.",
         location=EvidenceLocation(locator="abstract", page=6000),
+        extraction_method=ExtractionMethod.VERBATIM_ABSTRACT,
         relationship=EvidenceRelationship.SUPPORTS,
         strength=EvidenceStrength.STRONG,
         quote_verified=True,
@@ -423,6 +427,7 @@ def test_safe_legacy_workflow_operates_according_to_contract(tmp_path: Path) -> 
         sections=[OutlineSection(title="Overview", claim_ids=[claim.id])],
     )
 
+    fixture_source(source, evidence.evidence_text)
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
             project=project,
@@ -582,6 +587,8 @@ def test_regression_evidence_and_excerpt_sharing_only_one_common_word_rejected(t
     )
     outline = Outline(title="T", sections=[OutlineSection(title="S", claim_ids=[claim.id])])
 
+    evidence.extraction_method = ExtractionMethod.VERBATIM_ABSTRACT
+    fixture_source(source, evidence.evidence_text)
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
             project=project,
@@ -634,6 +641,7 @@ def test_regression_medium_claim_causal_numeric_without_semantic_review_rejected
     outline = Outline(title="T", sections=[OutlineSection(title="S", claim_ids=[claim.id])])
 
     # No semantic review supplied
+    fixture_source(source, evidence.evidence_text)
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
             project=project,
@@ -884,7 +892,7 @@ def test_regression_quote_verified_true_without_source_text_rejected(tmp_path: P
         )
     )
     assert response.passed is False
-    assert any("source text for source 'src_no_text' is unavailable to recompute quote validity" in r for r in response.rejection_reasons)
+    assert any("source snapshot" in r for r in response.rejection_reasons)
 
 
 # 9. Negative: Sumber fiktif dengan DOI definitely.fake.2026 dan state buatan APPROVED ditolak
@@ -941,18 +949,14 @@ def test_regression_fake_source_with_fake_doi_and_forged_approved_state_rejected
         )
     )
     assert response.success is False
-    assert (project.directory / "draft.md").exists()
+    assert not (project.directory / "draft.md").exists()
     assert not (project.directory / "final.docx").exists()
 
-    fact_file = project.directory / "fact_audit.json"
-    audit_data = json.loads(fact_file.read_text(encoding="utf-8"))
-    assert audit_data["passed"] is False
-    assert any("failed provider verification" in r for r in audit_data["rejection_reasons"])
-    # Verification report preserved in audit trail
-    assert len(audit_data["verification_reports"]) >= 1
+    assert "failed provider verification" in response.error_message
+    reports = json.loads((project.directory / "verification_reports.json").read_text(encoding="utf-8"))
+    assert reports and reports[0]["source_id"]
 
 
-# 10. Negative: Provider tidak tersedia -> status NEEDS_HUMAN_REVIEW dan DOCX diblokir
 def test_regression_provider_unavailable_requires_human_review(tmp_path: Path) -> None:
     project = _project(tmp_path, "reg_prov_unavailable")
     source = _valid_source()
@@ -990,16 +994,13 @@ def test_regression_provider_unavailable_requires_human_review(tmp_path: Path) -
         )
     )
     assert response.success is False
-    assert (project.directory / "draft.md").exists()
+    assert not (project.directory / "draft.md").exists()
     assert not (project.directory / "final.docx").exists()
 
-    fact_file = project.directory / "fact_audit.json"
-    audit_data = json.loads(fact_file.read_text(encoding="utf-8"))
-    assert audit_data["passed"] is False
-    assert any("failed provider verification: state=NEEDS_HUMAN_REVIEW" in r for r in audit_data["rejection_reasons"])
+    assert "failed provider verification" in response.error_message
+    assert response.needs_human_review is True
 
 
-# 11. Negative: Metadata provider tidak cocok dengan metadata input ditolak
 def test_regression_provider_metadata_mismatch_rejected(tmp_path: Path) -> None:
     project = _project(tmp_path, "reg_prov_mismatch")
     # Candidate source has title on attention mechanisms with DOI 10.1038/nature14539
@@ -1052,16 +1053,14 @@ def test_regression_provider_metadata_mismatch_rejected(tmp_path: Path) -> None:
         )
     )
     assert response.success is False
-    assert (project.directory / "draft.md").exists()
+    assert not (project.directory / "draft.md").exists()
     assert not (project.directory / "final.docx").exists()
 
-    fact_file = project.directory / "fact_audit.json"
-    audit_data = json.loads(fact_file.read_text(encoding="utf-8"))
-    assert audit_data["passed"] is False
-    assert any("failed provider verification" in r for r in audit_data["rejection_reasons"])
+    assert "failed provider verification" in response.error_message
+    reports = json.loads((project.directory / "verification_reports.json").read_text(encoding="utf-8"))
+    assert reports and reports[0]["source_id"]
 
 
-# 12. Positive: Sumber terverifikasi, evidence verbatim dari abstract, review lengkap -> final DOCX berhasil
 def test_regression_positive_verified_source_verbatim_evidence_full_review_produces_docx(tmp_path: Path) -> None:
     project = _project(tmp_path, "reg_positive_end_to_end")
     source = _valid_source()

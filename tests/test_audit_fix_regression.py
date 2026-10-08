@@ -18,6 +18,7 @@ All fixtures here are quarantined test data, never academic output.
 from __future__ import annotations
 
 import json
+from conftest import fixture_source
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -82,6 +83,7 @@ def _valid_bundle() -> tuple[Claim, Evidence, Source, Outline]:
         title="Fixture",
         sections=[OutlineSection(title="Findings", claim_ids=[claim.id])],
     )
+    fixture_source(source, evidence.evidence_text)
     return claim, evidence, source, outline
 
 
@@ -583,7 +585,7 @@ def test_docx_has_single_references_heading(tmp_path: Path) -> None:
     claim, evidence, source, _ = _valid_bundle()
     reference_list = format_reference_list([source], project_id=project.id)
     draft = (
-        "# Doc\n\n## Temuan\n\nBody text.\n\n## References\n\n"
+        "# Doc\n\n## Temuan\n\nBody text (Vaswani, 2017).\n\n## References\n\n"
         f"- {reference_list.entries[0].formatted}\n"
     )
     response = DocxGenerationTool().execute(
@@ -591,6 +593,7 @@ def test_docx_has_single_references_heading(tmp_path: Path) -> None:
             project=project,
             draft=draft,
             reference_list=reference_list,
+            sources=[source],
             citation_audit_passed=True,
             fact_audit_passed=True,
         )

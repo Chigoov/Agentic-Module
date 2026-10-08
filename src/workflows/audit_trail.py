@@ -22,6 +22,8 @@ Snapshots created:
 from __future__ import annotations
 
 import json
+import hashlib
+import shutil
 import os
 import re
 from datetime import datetime, timezone
@@ -220,6 +222,31 @@ class AcademicRunAudit:
 
         # 2. sources_snapshot.json
         sources_payload = [s.model_dump(mode="json") for s in sources]
+        from src.tools.source_content import inspect_source, stored_metadata
+        for source, snapshot in zip(sources, sources_payload):
+            proof = inspect_source(source, self.project.directory)
+            metadata_proof = source.metadata.get("verification_artifact", {}) if stored_metadata(source) else {}
+            for original, digest, kind in (
+                (proof.get("path"), proof.get("sha256"), "retrieval") if proof["full_text"] else (None, None, "retrieval"),
+                (metadata_proof.get("path"), metadata_proof.get("sha256"), "metadata")):
+                if not original or not digest:
+                    continue
+                content = Path(original).read_bytes()
+                if hashlib.sha256(content).hexdigest() != digest:
+                    continue
+                original_digest = digest
+                if kind == "metadata":
+                    content = json.dumps(sanitize_snapshot(json.loads(content), known_secrets=known_secrets), ensure_ascii=False).encode("utf-8")
+                    digest = hashlib.sha256(content).hexdigest()
+                target = self.run_dir / "source_artifacts" / (digest + Path(original).suffix)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+                snapshot["metadata"].setdefault("snapshot_origins", {})[kind] = {"path": original, "sha256": original_digest}
+                if kind == "retrieval":
+                    snapshot["retrieval_path"] = str(target)
+                else:
+                    snapshot["metadata"]["verification_artifact"]["path"] = str(target)
+                    snapshot["metadata"]["verification_artifact"]["sha256"] = digest
         write_json(
             self.run_dir / "sources_snapshot.json",
             sanitize_snapshot(sources_payload, known_secrets=known_secrets),
@@ -254,6 +281,20 @@ class AcademicRunAudit:
             overwrite=True,
         )
 
+    def snapshot_search_summary(self, summary: dict) -> dict:
+        """Keep search-stage evidence inside the selected run, without trusting counters."""
+        result = dict(summary)
+        if result.get("search_log_path"):
+            try:
+                content = Path(result["search_log_path"]).read_bytes()
+                if hashlib.sha256(content).hexdigest() == result.get("search_log_sha256"):
+                    target = self.run_dir / "search_log.json"
+                    write_json(target, sanitize_snapshot(json.loads(content)), root=self._root, overwrite=True)
+                    result.update(search_log_path=str(target), search_log_sha256=hashlib.sha256(target.read_bytes()).hexdigest())
+            except (OSError, ValueError, TypeError):
+                pass  # Workbook reconciliation reports an unreadable or mismatched log.
+        return result
+
     def finish(
         self,
         *,
@@ -261,7 +302,11 @@ class AcademicRunAudit:
         stages: list[str] | None = None,
         draft_path: str | None = None,
         docx_path: str | None = None,
+        quantitative_workbook_path: str | None = None,
+        quantitative_report_path: str | None = None,
+        checksum_manifest_path: str | None = None,
         error_message: str | None = None,
+        result_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Finalize the run, snapshot audit reports if present, and write run_summary.json."""
         finished_at = datetime.now(timezone.utc).isoformat()
@@ -270,7 +315,7 @@ class AcademicRunAudit:
         # Snapshot citation audit if artifact exists
         citation_audit_file = self.project.artifact_path(ProjectArtifact.CITATION_AUDIT)
         citation_audit_path: str | None = None
-        if citation_audit_file.exists():
+        if citation_audit_file.exists() and citation_audit_file.stat().st_mtime >= datetime.fromisoformat(self.started_at).timestamp():
             try:
                 cit_data = json.loads(citation_audit_file.read_text(encoding="utf-8"))
                 write_json(
@@ -286,7 +331,7 @@ class AcademicRunAudit:
         # Snapshot fact audit if artifact exists
         fact_audit_file = self.project.artifact_path(ProjectArtifact.FACT_AUDIT)
         fact_audit_path: str | None = None
-        if fact_audit_file.exists():
+        if fact_audit_file.exists() and fact_audit_file.stat().st_mtime >= datetime.fromisoformat(self.started_at).timestamp():
             try:
                 fact_data = json.loads(fact_audit_file.read_text(encoding="utf-8"))
                 write_json(
@@ -302,7 +347,7 @@ class AcademicRunAudit:
         # Snapshot human style audit if artifact exists
         human_style_file = self.project.artifact_path(ProjectArtifact.HUMAN_STYLE_AUDIT)
         human_style_path: str | None = None
-        if human_style_file.exists():
+        if human_style_file.exists() and human_style_file.stat().st_mtime >= datetime.fromisoformat(self.started_at).timestamp():
             try:
                 style_data = json.loads(human_style_file.read_text(encoding="utf-8"))
                 write_json(
@@ -315,25 +360,20 @@ class AcademicRunAudit:
             except Exception:  # noqa: BLE001
                 pass
 
-        # Resolve verified draft/docx paths
-        resolved_draft = draft_path or (
-            str(self.project.artifact_path(ProjectArtifact.DRAFT))
-            if self.project.artifact_path(ProjectArtifact.DRAFT).exists()
-            else None
-        )
-        resolved_docx = docx_path or (
-            str(self.project.artifact_path(ProjectArtifact.FINAL_DOCX))
-            if self.project.artifact_path(ProjectArtifact.FINAL_DOCX).exists()
-            else None
-        )
-
-        final_draft_path = resolved_draft if success else None
-        final_docx_path = resolved_docx if success else None
+        final_draft_path = draft_path
+        for filename in ("verification_reports.json", "review_queue.json", "human_style_audit.json"):
+            source = self.project.directory / filename
+            if source.is_file() and source.stat().st_mtime >= datetime.fromisoformat(self.started_at).timestamp():
+                shutil.copy2(source, self.run_dir / filename)
+        final_docx_path = docx_path if success else None
 
         draft_relpath = _compute_relpath(final_draft_path, self._root)
         docx_relpath = _compute_relpath(final_docx_path, self._root)
         citation_audit_relpath = _compute_relpath(citation_audit_path, self._root)
         fact_audit_relpath = _compute_relpath(fact_audit_path, self._root)
+        quantitative_workbook_relpath = _compute_relpath(quantitative_workbook_path, self._root)
+        quantitative_report_relpath = _compute_relpath(quantitative_report_path, self._root)
+        checksum_manifest_relpath = _compute_relpath(checksum_manifest_path, self._root)
 
         run_summary = {
             "run_id": self.run_id,
@@ -350,10 +390,37 @@ class AcademicRunAudit:
             "citation_audit_relpath": citation_audit_relpath,
             "fact_audit_path": fact_audit_path,
             "fact_audit_relpath": fact_audit_relpath,
+            "quantitative_workbook_path": quantitative_workbook_path,
+            "quantitative_workbook_relpath": quantitative_workbook_relpath,
+            "quantitative_report_path": quantitative_report_path,
+            "quantitative_report_relpath": quantitative_report_relpath,
+            "checksum_manifest_path": checksum_manifest_path,
+            "checksum_manifest_relpath": checksum_manifest_relpath,
             "stages": stages,
             "error_message": error_message,
         }
 
+        if result_metadata is not None:
+            run_summary.update(sanitize_snapshot(result_metadata))
+        run_summary.setdefault("execution_success", success)
+        run_summary.setdefault("result_status", "PASS" if success else "FAILED")
+        run_summary.setdefault("finalization_allowed", success)
+        artifacts = []
+        for filename, source_path in (("draft.md", final_draft_path), ("final.docx", final_docx_path),
+            ("quantitative_review.xlsx", quantitative_workbook_path), ("quantitative_review_report.md", quantitative_report_path)):
+            if not source_path or not Path(source_path).is_file():
+                continue
+            source_file = Path(source_path).resolve()
+            try:
+                source_file.relative_to(self.run_dir.resolve())
+                target = source_file
+            except ValueError:
+                target = self.run_dir / "artifacts" / filename
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_file, target)
+            artifacts.append({"path": str(target), "name": filename, "size": target.stat().st_size,
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
+        run_summary["artifacts"] = artifacts
         write_json(
             self.run_dir / "run_summary.json",
             sanitize_snapshot(run_summary),

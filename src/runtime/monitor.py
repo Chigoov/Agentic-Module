@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, TaskAnalyzerAgent, TaskAnalyzerRequest
 from src.core.paths import get_paths
 from src.runtime.bootstrap import health_check
+from src.runtime.execution import create_execution_project, ensure_workflow_ready
 from src.runtime.progress import read_progress, record_progress
 from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
@@ -24,7 +25,7 @@ from src.schemas.outline import Outline
 from src.schemas.project import Project
 from src.schemas.source import Source
 from src.tools.verification_tool import VerificationEngine
-from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
+from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow, review_options
 from src.workflows.gates import AcademicGateError
 
 __all__ = ["create_handler", "serve", "get_api_token"]
@@ -63,7 +64,7 @@ def get_api_token() -> str:
     return token
 
 
-INDEX = """<!doctype html>
+LEGACY_INDEX = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Autonomi Monitor</title>
@@ -155,6 +156,9 @@ load();setInterval(load,2000);
 """
 
 
+INDEX = Path(__file__).with_name("static").joinpath("office.html").read_text(encoding="utf-8")
+
+
 def _json(payload: Any) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
@@ -166,47 +170,57 @@ def _project_from_payload(payload: dict[str, Any]) -> Project:
     created under the server's own workspace root.
     """
     paths = get_paths()
+    template = None
     if "project" in payload:
-        project = Project.model_validate(payload["project"])
-        if not paths.is_inside_workspace(project.directory):
+        template = Project.model_validate(payload["project"])
+        if not paths.is_inside_workspace(template.directory):
             raise ValueError(
                 "project path is outside the server workspace root"
             )
-        if paths.is_inside_system_root(project.directory):
+        if paths.is_inside_system_root(template.directory):
             raise ValueError(
                 "project path is inside SYSTEM_ROOT (DATA BASE)"
             )
-        return project
-    workspace_root = paths.workspace_root
-    workspace_name = payload.get("workspace", "TUGAS 1")
+    if payload.get("resume"):
+        if template is None or not (template.directory / "project.json").is_file():
+            raise ValueError("Resume requires an existing server-owned project")
+        return Project.model_validate(json.loads((template.directory / "project.json").read_text(encoding="utf-8")))
     project_name = payload.get("project_name") or payload.get("topic") or "research"
-    # Slugify to a safe folder name; the server picks the directory.
-    safe_name = "".join(c if c.isalnum() or c in "-_ " else "_" for c in project_name).strip() or "research"
-    project_dir = (workspace_root / workspace_name / safe_name).resolve()
-    if not paths.is_inside_workspace(project_dir):
-        raise ValueError("workspace escapes the server workspace root")
-    if paths.is_inside_system_root(project_dir):
-        raise ValueError("project directory is inside SYSTEM_ROOT (DATA BASE)")
-    project_dir.mkdir(parents=True, exist_ok=True)
-    return Project(
-        name=safe_name,
+    workspace_name = str(payload.get("workspace") or (template.workspace if template else "TUGAS 1"))
+    # The monitor may run against a fresh portable root; create only the
+    # selected workspace, never a request-supplied project path.
+    paths.workspace_path(workspace_name).mkdir(parents=True, exist_ok=True)
+    project = create_execution_project(
+        user_request=str(payload.get("topic") or (template.user_request if template else project_name)),
+        command="run-academic",
         workspace=workspace_name,
-        path=str(project_dir),
-        title=payload.get("title") or safe_name,
-        citation_style=payload.get("citation_style", "APA7"),
-        language=payload.get("language", "id"),
-        user_request=payload.get("topic", ""),
+        template=template,
+        paths=paths,
     )
+    if template is None:
+        for name in ("title", "citation_style", "language", "output_type", "required_sections", "research_options"):
+            if name in payload:
+                setattr(project, name, payload[name])
+        from src.core.storage import write_json
+        write_json(project.directory / "project.json", project.model_dump(mode="json"), root=project.directory, overwrite=True)
+    return project
 
 
 def _plan(topic: str, workspace: str = "TUGAS 1") -> dict[str, Any]:
+    try:
+        paths = get_paths()
+        paths.workspace_path(workspace).mkdir(parents=True, exist_ok=True)
+        project = create_execution_project(user_request=topic, command="plan", workspace=workspace)
+        readiness = ensure_workflow_ready(project=project)
+    except Exception as exc:
+        return {"success": False, "error": str(exc)}
     task_response = TaskAnalyzerAgent().execute(TaskAnalyzerRequest(user_request=topic, workspace=workspace))
     if not task_response.success or task_response.task is None:
         return {"success": False, "error": task_response.error_message}
     plan = ResearchPlannerAgent().execute(
         ResearchPlannerRequest(task=task_response.task, keywords=task_response.keywords)
     ).plan
-    return {"success": True, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan}
+    return {"success": True, "project_path": str(project.directory), "readiness": readiness, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan}
 
 
 class MonitorHandler(BaseHTTPRequestHandler):
@@ -245,8 +259,15 @@ class MonitorHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self._send(200, INDEX, "text/html; charset=utf-8")
+        elif parsed.path == "/workflow":
+            self._send(200, LEGACY_INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/api/progress":
-            self._json(200, {"success": True, "events": read_progress()})
+            query = parse_qs(parsed.query)
+            self._json(200, {"success": True, "events": read_progress(limit=1000, job_id=query.get("job_id", [None])[0])})
+        elif parsed.path in {"/assets/research-office.jpg", "/assets/research-team.webp", "/assets/office.js"}:
+            asset = Path(__file__).with_name("static") / Path(parsed.path).name
+            content_type = {".jpg": "image/jpeg", ".webp": "image/webp", ".js": "text/javascript; charset=utf-8"}[asset.suffix]
+            self._send(200, asset.read_bytes(), content_type)
         elif parsed.path == "/api/check":
             record_progress("check", "running", message="Health check started")
             ok = health_check(verbose=False)
@@ -315,6 +336,8 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 outline=outline,
                 semantic_reviews=semantic_reviews,
                 verification_engine=VerificationEngine(),
+                generate_docx=payload.get("generate_docx", True),
+                **review_options(payload, project),
             )
         )
         record_progress("academic", "success" if response.success else "failed", message=response.error_message or "Academic workflow completed")

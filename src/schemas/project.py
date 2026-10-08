@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field
 
@@ -54,6 +55,9 @@ class ProjectArtifact(StrEnum):
     REVIEW_QUEUE = "review_queue.json"
     SEMANTIC_REVIEWS = "semantic_reviews.json"
     FINAL_DOCX = "final.docx"
+    QUANTITATIVE_REVIEW_WORKBOOK = "quantitative_review.xlsx"
+    QUANTITATIVE_REVIEW_REPORT = "quantitative_review_report.md"
+    CHECKSUM_MANIFEST = "checksum_manifest.json"
 
 
 #: Ordered tuple of expected artifacts, mirroring the research data flow.
@@ -105,6 +109,10 @@ class Project(BaseRecord):
     task_state: TaskState = TaskState.CREATED
     citation_style: str = "APA7"
     language: str = "id"
+    output_type: str = "academic_draft"
+    required_sections: list[str] = Field(default_factory=list)
+    research_options: dict[str, Any] = Field(default_factory=dict)
+    origin_project_path: str | None = None
 
     @property
     def directory(self) -> Path:

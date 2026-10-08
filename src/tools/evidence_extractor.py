@@ -113,7 +113,7 @@ class EvidenceExtractor:
             relationship=relationship,
             strength=strength,
             confidence=confidence,
-            extraction_method=ExtractionMethod.VERBATIM_FULLTEXT,
+            extraction_method=ExtractionMethod.VERBATIM_ABSTRACT if "abstract" in resolved_location.describe().casefold() or (source.abstract and _normalize(haystack) == _normalize(source.abstract)) else ExtractionMethod.VERBATIM_FULLTEXT,
             verbatim=True,
             quote_verified=True,
             extracted_by="evidence_extractor",

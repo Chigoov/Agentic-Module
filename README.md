@@ -10,6 +10,10 @@ to produce **scientifically verifiable academic writing** using
 verified source and located evidence. No source, DOI, or quotation is ever
 invented.
 
+Each CLI execution receives a fresh uniquely named project folder under the
+selected workspace. Before any agent or tool call, the workflow checks system
+health, writable execution storage, and required tool availability.
+
 ---
 
 ## Mission
@@ -47,7 +51,7 @@ DATA BASE/
 │   ├── tools/                 # External capabilities + provider adapters
 │   ├── agents/                # Reasoning components (interface)
 │   ├── workflows/             # State machines / orchestration
-│   └── runtime/               # Bootstrap & health check
+│   └── runtime/               # Bootstrap, execution isolation & health check
 └── tests/                     # Fast + integration tests
 ```
 
@@ -142,6 +146,46 @@ Run Academic Writing Mode from a JSON payload:
 ```bash
 python -m src run-academic --input-json input.json
 ```
+
+For a quantitative article review, add `quantitative_review: true` and
+`quantitative_review_records` to the same JSON payload. The workflow writes
+`quantitative_review.xlsx`, `quantitative_review_report.md`, and
+`checksum_manifest.json` from the supplied standard workbook. The template is
+resolved from `quantitative_review_template`, then
+`AUTONOMI_QUANTITATIVE_REVIEW_TEMPLATE`, then the bundled
+[standard workbook](templates/Standar%20Baku%20Hasil%20Agent.xlsx) in `templates/`.
+The user's `Documents/Codex` folder is a final fallback. The number 40 is an initial target: records above 40
+are retained. Final ranking requires a completed rubric, traceable assessment,
+and scientific/access eligibility; placeholder weights never produce final scores.
+Use `quantitative_review_exact_count: 40` only when
+the request explicitly says “tepat 40 artikel”. A request for “artikel
+terbaik” without a count returns structured clarification while preserving the
+corpus. Selection limits the ranked selection, while `screening_audit.json`
+retains all candidates and reasons.
+
+New tasks receive new projects; revisions use `--resume` or API `resume: true`
+and create a new run in the same project. Review options and semantic reviews
+persist through CLI, API, resume, and finalize. Export packages immutable
+artifacts from the requested run and writes a separate ZIP checksum manifest.
+
+`success` retains its established execution/audit contract. Additional response
+metadata and `run_summary.json` distinguish `execution_success`, `result_status`
+(`PASS`, `PARTIAL`, `FAILED`), `needs_human_review`, and `finalization_allowed`.
+A processed PARTIAL result can be saved/exported without producing a final DOCX.
+Use project `output_type: "literature_review"` for mandatory nonempty review
+sections, or `required_sections` for a user template. Other output types retain
+their own structure. Set project `research_options.require_free_full_text: true`
+for legal free full-text research, with manuscript version and scientific
+eligibility recorded separately from access.
+
+Stored full-text proof uses `metadata.retrieval` (artifact SHA-256, retrieval
+time and origin), `metadata.examination` (source ID, artifact SHA-256, reviewer,
+time, scope, located excerpts), and `metadata.eligibility_review` (decision and
+located construct/population/design evidence). Workbook assessment records
+bind criterion scores to that artifact and the template rubric. Metadata
+verification snapshots are written by the existing verification engine and
+reused only while their identity and integrity can be checked. Legacy records
+without these proofs remain candidates requiring verification.
 
 Run the local workflow monitor:
 

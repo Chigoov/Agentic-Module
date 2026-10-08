@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from conftest import fixture_source
 
 from src.runtime.cli import build_parser, main
 from src.schemas.claim import Claim, ClaimStatus, SupportLevel
@@ -81,6 +82,7 @@ def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys, monkeypatch) ->
         "reviewer": "antigravity_agent",
         "method": "semantic_evaluation",
     }
+    fixture_source(source, evidence.evidence_text, tmp_path / "source_fixture")
     payload = {
         "project": project.to_dict(),
         "sources": [source.to_dict()],
@@ -171,4 +173,4 @@ def test_cli_finalize_blocks_on_critical_pending_item(tmp_path: Path, capsys) ->
 
     assert main(["finalize", str(project_dir)]) == 1
     err = capsys.readouterr().err
-    assert "critical review items remain pending" in err
+    assert "review items remain pending" in err

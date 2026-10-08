@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from conftest import fixture_source
 
 from src.core.storage import append_jsonl
 from src.schemas.claim import Claim, ClaimStatus, SupportLevel
@@ -40,6 +41,7 @@ def _inputs() -> tuple[list[Claim], list[Evidence], list[Source], Outline]:
         quote_verified=True,
     )
     outline = Outline(title="Test", sections=[OutlineSection(title="Findings", claim_ids=[claim.id])])
+    fixture_source(source, evidence.evidence_text)
     return [claim], [evidence], [source], outline
 
 

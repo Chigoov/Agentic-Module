@@ -141,6 +141,7 @@ class DiscoveryRequest(AgentRequest):
 
 class DiscoveryResponse(AgentResponse):
     sources: list[Source] = Field(default_factory=list)
+    raw_sources: list[Source] = Field(default_factory=list)
 
 
 class DiscoveryAgent(BaseAgent[DiscoveryRequest, DiscoveryResponse]):
@@ -151,6 +152,7 @@ class DiscoveryAgent(BaseAgent[DiscoveryRequest, DiscoveryResponse]):
 
     def _execute(self, request: DiscoveryRequest) -> DiscoveryResponse:
         all_candidates: list[Source] = list(request.candidates)
+        failures = []
         if request.queries and request.providers:
             for query in request.queries:
                 for prov in request.providers:
@@ -160,13 +162,18 @@ class DiscoveryAgent(BaseAgent[DiscoveryRequest, DiscoveryResponse]):
                         )
                         if resp.success and resp.results:
                             all_candidates.extend(resp.results)
-                    except Exception:
-                        pass
+                        if not resp.success:
+                            failures.append({"provider": getattr(prov, "name", type(prov).__name__), "query": query,
+                                "error": resp.error_message or resp.error_code or "provider search failed"})
+                    except Exception as exc:
+                        failures.append({"provider": getattr(prov, "name", type(prov).__name__), "query": query, "error": str(exc)})
 
         # Deduplicate deterministically using the enhanced multi-key deduplicator
         deduped = deduplicate(all_candidates)
         ranked = rank_sources(deduped)
-        return DiscoveryResponse(sources=ranked, metadata={"deduped": len(all_candidates) - len(ranked)})
+        return DiscoveryResponse(success=bool(all_candidates) or not failures, sources=ranked, raw_sources=all_candidates,
+            needs_human_review=bool(failures), error_message="; ".join(f["error"] for f in failures) or None,
+            metadata={"deduped": len(all_candidates) - len(ranked), "provider_failures": failures})
 
 
 class VerificationRequest(AgentRequest):
@@ -221,6 +228,11 @@ class RetrievalAgent(BaseAgent[RetrievalAgentRequest, RetrievalAgentResponse]):
         parsed: dict[str, str] = {}
         failed: list[str] = []
         for source in request.sources:
+            from src.tools.source_content import inspect_source
+            cached = inspect_source(source, request.project.directory)
+            if cached["full_text"]:
+                parsed[source.id] = cached["text"]
+                continue
             direct_dl = getattr(source, "download_allowed", False)
             response = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=direct_dl))
             if response.success and response.parsed_text:

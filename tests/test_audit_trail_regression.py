@@ -11,6 +11,7 @@ Checks:
 from __future__ import annotations
 
 import json
+from conftest import fixture_source
 from pathlib import Path
 
 import pytest
@@ -60,6 +61,7 @@ def _valid_bundle() -> tuple[Claim, Evidence, Source, Outline]:
         title="Audit Trail Outline",
         sections=[OutlineSection(title="Section 1", claim_ids=[claim.id])],
     )
+    fixture_source(source, evidence.evidence_text)
     return claim, evidence, source, outline
 
 
@@ -172,6 +174,7 @@ def test_audit_trail_failed_internal_token_creates_run_summary(tmp_path: Path) -
     token_evidence = evidence.model_copy(
         update={"evidence_text": "Model analysis revealed turn0search5 token leak."}
     )
+    fixture_source(source, token_evidence.evidence_text)
 
     request = AcademicWritingRequest(
         project=project,

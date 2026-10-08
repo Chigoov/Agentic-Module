@@ -34,6 +34,7 @@ from src.tools.citation_manager import (
     detect_orphan_citations,
 )
 from src.tools.reference_formatter import citation_key_for, format_reference
+from src.tools.source_content import recheck_quote
 
 __all__ = [
     "CitationAuditRequest",
@@ -304,6 +305,14 @@ class FactAuditAgent(BaseAgent[FactAuditRequest, FactAuditResponse]):
                     structural_passed = False
                     semantic_passed = False
 
+        from src.workflows.gates import check_academic_integrity
+        integrity = check_academic_integrity(claims=request.claims, evidence=request.evidence,
+            sources=request.sources, root=request.project.directory)
+        if not integrity.ok:
+            rejection_reasons.extend(integrity.violations + integrity.review_reasons)
+            structural_passed = False
+            semantic_passed = False
+
         # ---------------------------------------------------------------------
         # 3. Bibliographic metadata checks (Tahap 4)
         # ---------------------------------------------------------------------
@@ -394,30 +403,11 @@ class FactAuditAgent(BaseAgent[FactAuditRequest, FactAuditResponse]):
                         structural_failures.append(claim.id)
                         claim_rejections.append(f"source '{src.id}' cited by evidence '{evd.id}' is unverified (state={src.state})")
 
-                    # Recompute quote validity using source abstract or retrieval_path
                     if evd.verbatim or evd.extraction_method in {ExtractionMethod.VERBATIM_FULLTEXT, ExtractionMethod.VERBATIM_ABSTRACT}:
-                        source_text = ""
-                        if src and src.abstract and src.abstract.strip():
-                            source_text = src.abstract
-                        elif src and src.retrieval_path and Path(src.retrieval_path).exists():
-                            try:
-                                source_text = Path(src.retrieval_path).read_text(encoding="utf-8")
-                            except Exception:
-                                pass
-
-                        if not source_text:
+                        if not src or not recheck_quote(src, evd, request.project.directory):
                             claim_rejections.append(
-                                f"source text for source '{src.id if src else evd.source_id}' is unavailable to recompute quote validity; requires human review"
+                                f"verbatim evidence '{evd.id}' text is not found in the located source snapshot; requires human review"
                             )
-                        else:
-                            norm_evd = _normalize_text(evd.evidence_text)
-                            norm_src = _normalize_text(source_text)
-                            if norm_evd not in norm_src:
-                                claim_rejections.append(
-                                    f"verbatim evidence '{evd.id}' text is not found in source '{src.id if src else evd.source_id}' abstract/fulltext"
-                                )
-                            else:
-                                evd.quote_verified = True
 
             # (D) Overclaim Detection (Tahap 5)
             for term in STRONG_CLAIM_TERMS:

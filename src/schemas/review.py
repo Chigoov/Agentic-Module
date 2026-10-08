@@ -25,6 +25,7 @@ class ReviewItem(BaseRecord):
     recommended_action: str
     status: str = "PENDING"  # "PENDING", "IN_REVIEW", "RESOLVED", "DISMISSED"
     resolution_notes: str | None = None
+    blocks_finalization: bool | None = None
 
 
 class ReviewQueue:
@@ -63,10 +64,14 @@ class ReviewQueue:
         """Check if item has unresolved CRITICAL review items."""
         return any(
             i.item_id == item_id
-            and i.severity == "CRITICAL"
+            and (i.blocks_finalization is True or (i.blocks_finalization is None and i.severity in {"CRITICAL", "HIGH"}))
             and i.status not in ("RESOLVED", "DISMISSED")
             for i in self._items
         )
+
+    def blocking_items(self) -> list[ReviewItem]:
+        return [i for i in self._items if i.status not in {"RESOLVED", "DISMISSED"}
+                and (i.blocks_finalization is True or (i.blocks_finalization is None and i.severity in {"CRITICAL", "HIGH"}))]
 
     def to_list(self) -> list[dict[str, Any]]:
         """Serialize all items to a list of dicts."""

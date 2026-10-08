@@ -29,6 +29,7 @@ Security and provenance constraints:
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 import zipfile
@@ -41,11 +42,19 @@ _RUN_SNAPSHOT_FILES = (
     "run_summary.json",
     "input_snapshot.json",
     "sources_snapshot.json",
+    "verified_sources_snapshot.json",
     "claims_snapshot.json",
     "evidence_snapshot.json",
     "outline_snapshot.json",
     "citation_audit_snapshot.json",
     "fact_audit_snapshot.json",
+    "workflow_options.json",
+    "semantic_reviews.json",
+    "access_screening.json",
+    "search_log.json",
+    "verification_reports.json",
+    "review_queue.json",
+    "human_style_audit.json",
 )
 
 
@@ -96,10 +105,10 @@ def export_bundle(
     # Select target run directory
     target_run_tuple: tuple[Path, str, dict[str, Any] | None] | None = None
     if run_id:
-        target_run_tuple = next(
-            (item for item in runs_with_meta if item[0].name == run_id or item[0].name.endswith(run_id)),
-            None,
-        )
+        matches = [item for item in runs_with_meta if item[0].name == run_id or item[0].name.endswith(run_id)]
+        if len(matches) > 1:
+            return {"success": False, "error": f"Ambiguous run ID {run_id}; provide the full run ID"}
+        target_run_tuple = matches[0] if matches else None
         if not target_run_tuple:
             return {
                 "success": False,
@@ -136,34 +145,34 @@ def export_bundle(
     # Prepare files to package: list of (source_path, arcname)
     files_to_pack: list[tuple[Path, str]] = []
 
-    if is_success:
-        # Require academic outputs for successful runs
-        docx_file = resolved_proj / "final.docx"
-        draft_file = resolved_proj / "draft.md"
-
-        if not docx_file.exists() or not draft_file.exists():
-            return {
-                "success": False,
-                "error": "Required academic output (final.docx or draft.md) not found",
-            }
-
-        files_to_pack.append((docx_file, "academic_output/final.docx"))
-        files_to_pack.append((draft_file, "academic_output/draft.md"))
-
-        # Audits if present in project
-        citation_audit_file = resolved_proj / "citation_audit.json"
-        if citation_audit_file.exists():
-            files_to_pack.append((citation_audit_file, "audits/citation_audit.json"))
-
-        fact_audit_file = resolved_proj / "fact_audit.json"
-        if fact_audit_file.exists():
-            files_to_pack.append((fact_audit_file, "audits/fact_audit.json"))
+    for artifact in selected_summary.get("artifacts", []) if is_success else []:
+        source_path = ensure_within(Path(artifact["path"]), selected_run_dir)
+        if not source_path.is_file() or hashlib.sha256(source_path.read_bytes()).hexdigest() != artifact["sha256"]:
+            return {"success": False, "error": f"Run artifact integrity mismatch: {source_path}"}
+        filename = artifact["name"]
+        if filename == "final.docx" and not selected_summary.get("finalization_allowed", False):
+            return {"success": False, "error": "Run is not allowed to export a final document"}
+        folder = "review_output" if filename.startswith("quantitative_") else "academic_output"
+        files_to_pack.append((source_path, f"{folder}/{filename}"))
+    if is_success and not files_to_pack:
+        return {"success": False, "error": "Selected run has no immutable output artifacts; re-run before export"}
+    for filename in ("citation_audit_snapshot.json", "fact_audit_snapshot.json"):
+        path = selected_run_dir / filename
+        if is_success and path.is_file():
+            files_to_pack.append((path, "audits/" + filename.replace("_snapshot", "")))
+    for filename in ("screening_audit.json",):
+        path = selected_run_dir / "review" / filename
+        if is_success and path.is_file():
+            files_to_pack.append((path, "review_output/" + filename))
 
     # Add snapshots from selected run directory
     for filename in _RUN_SNAPSHOT_FILES:
         snap_file = selected_run_dir / filename
         if snap_file.exists():
             files_to_pack.append((snap_file, f"run/{filename}"))
+    for path in (selected_run_dir / "source_artifacts").glob("*"):
+        if path.is_file():
+            files_to_pack.append((path, "sources/" + path.name))
 
     # Prepare destination exports directory
     exports_dir = resolved_proj / "exports"
@@ -179,11 +188,36 @@ def export_bundle(
             for src_path, arcname in files_to_pack:
                 safe_src = ensure_within(src_path, resolved_proj)
                 zf.write(safe_src, arcname=arcname)
+        with zipfile.ZipFile(safe_bundle_path, "r") as zf:
+            bad_member = zf.testzip()
+            if bad_member is not None:
+                return {
+                    "success": False,
+                    "error": f"ZIP checksum test failed for member {bad_member}",
+                }
     except Exception as exc:  # noqa: BLE001
         return {
             "success": False,
             "error": f"Failed to create bundle archive: {exc}",
         }
+
+    zip_digest = hashlib.sha256(safe_bundle_path.read_bytes()).hexdigest()
+    manifest = {
+        "run_id": selected_run_id,
+        "artifacts": [{"path": str(path), "archive_name": arcname, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size} for path, arcname in files_to_pack],
+        "zip": {"path": str(safe_bundle_path), "sha256": zip_digest, "size": safe_bundle_path.stat().st_size},
+    }
+    manifest_path = safe_bundle_path.with_suffix(".manifest.json")
+    try:
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        original_manifest = selected_summary.get("checksum_manifest_path")
+        if original_manifest:
+            original_path = ensure_within(Path(original_manifest), selected_run_dir)
+            stored = json.loads(original_path.read_text(encoding="utf-8"))
+            stored["zip"] = manifest["zip"]
+            original_path.write_text(json.dumps(stored, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        return {"success": False, "error": f"Checksum manifest write failed: {exc}", "bundle_path": str(safe_bundle_path)}
 
     return {
         "success": True,
@@ -191,4 +225,8 @@ def export_bundle(
         "run_id": selected_run_id,
         "bundle_path": str(safe_bundle_path),
         "included_files": [arcname for _, arcname in files_to_pack],
+        "zip_sha256": zip_digest,
+        "zip_size": safe_bundle_path.stat().st_size,
+        "zip_testzip": "PASS",
+        "manifest_path": str(manifest_path),
     }

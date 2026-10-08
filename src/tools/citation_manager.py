@@ -37,10 +37,18 @@ INTERNAL_TOKEN_PATTERN = re.compile(r"turn\d+|view\d+|search\d+|filecite|[\u3010
 AUTHOR_YEAR_CITATION_PATTERN = re.compile(
     r"\((?P<name>[A-Za-z][A-Za-z .,'&\u2019-]*?),\s*"
     r"(?P<year>\d{4}[a-z]?|n\.d\.(?:-[a-z])?)"
-    r"(?P<locator>(?:,\s*(?:p|pp)\.[^()]*)?)\)"
+    r"(?P<locator>(?:,\s*[^();]*)?)\)"
 )
 
 _DISAMBIGUATION = "abcdefghijklmnopqrstuvwxyz"
+
+
+def author_year_mentions(text: str):
+    for group in re.findall(r"\(([^()]*)\)", text):
+        for part in group.split(";"):
+            match = AUTHOR_YEAR_CITATION_PATTERN.fullmatch("(" + part.strip() + ")")
+            if match:
+                yield match
 
 
 class CitationManager:
@@ -167,6 +175,37 @@ def known_author_year_forms(sources: list[Source]) -> set[str]:
     return forms
 
 
+def reconcile_references(draft: str, reference_list, sources: list[Source]) -> dict:
+    """Count pointers in the body, independently of the available corpus."""
+    body = re.split(r"(?im)^##\s+(?:references|referensi|daftar pustaka)\s*$", draft)[0]
+    by_id = {source.id: source for source in sources}
+    entries = reference_list.entries if reference_list else []
+    manager = CitationManager()
+    findings = []
+    for entry in entries:
+        if entry.source_id not in by_id:
+            findings.append(f"reference has no source: {entry.source_id}")
+        else:
+            manager.register_source(by_id[entry.source_id])
+    from src.tools.reference_formatter import format_reference_list
+    expected = {entry.source_id: entry.formatted for entry in format_reference_list(manager.cited_sources(), citation_manager=manager).entries}
+    if len({entry.source_id for entry in entries}) != len(entries):
+        findings.append("duplicate reference entries")
+    for entry in entries:
+        if entry.source_id in expected and entry.formatted != expected[entry.source_id]:
+            findings.append(f"reference metadata does not match source: {entry.source_id}")
+    forms = {f"{m.group('name').strip()}, {m.group('year')}" for m in author_year_mentions(body)}
+    cited = {source.id for source in manager.cited_sources() if manager.get_citation_label(source.id) in forms}
+    for entry in entries:
+        if entry.source_id not in cited:
+            findings.append(f"reference not cited in body: {entry.source_id}")
+    known = set(manager.citation_map().values())
+    for form in sorted(forms - known):
+        findings.append(f"body citation has no reference: {form}")
+    return {"available": len(sources), "cited": len(cited), "cited_source_ids": sorted(cited),
+        "reference_entries": len(entries), "findings": findings}
+
+
 def detect_orphan_author_year_citations(text: str, known_sources: list[Source]) -> list[str]:
     """Scan ``text`` for author-year citations with no matching source.
 
@@ -187,7 +226,7 @@ def detect_orphan_author_year_citations(text: str, known_sources: list[Source]) 
             known.add((first_author, year))
 
     found: list[str] = []
-    for match in AUTHOR_YEAR_CITATION_PATTERN.finditer(text):
+    for match in author_year_mentions(text):
         citation = match.group(0)
         name = match.group("name").strip()
         raw_year = match.group("year")
@@ -230,10 +269,10 @@ def build_citation_map(
             label = citation_manager.get_citation_label(src_id)
             ev_id = getattr(ev, "id", "")
             loc_obj = getattr(ev, "location", None)
-            loc_str = "p. 1"
+            loc_str = "location unspecified"
             if loc_obj is not None:
                 if hasattr(loc_obj, "describe"):
-                    loc_str = loc_obj.describe() or "p. 1"
+                    loc_str = loc_obj.describe() or "location unspecified"
                 elif getattr(loc_obj, "page", None):
                     loc_str = f"p. {loc_obj.page}"
                 elif getattr(loc_obj, "locator", None):

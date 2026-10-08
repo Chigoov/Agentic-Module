@@ -2,6 +2,39 @@
 
 Use this repository through the CLI. Work from the `DATA BASE` folder.
 
+## Mandatory execution isolation and preflight
+
+- Every new agent task, plan, or search must create a new uniquely named project
+  folder under the selected project workspace (`TUGAS 1`, `TUGAS 2`, etc.).
+  A revision/resume of the same task uses a new immutable run in the same project;
+  use `--resume` or API `resume: true`. Preserve title, language, citation style,
+  research options, source provenance, and semantic reviews.
+- Before an agent workflow starts, centralized preflight must pass the system
+  health check, confirm the execution folder is writable, and verify every
+  tool required by that flow is available. If one check fails, stop and report
+  the missing capability; do not continue with partial or invented output.
+- Existing `source_documents/` may be copied into the new execution folder as
+  immutable inputs. Generated artifacts and audit trails belong only to it.
+- Quantitative article reviews must set `quantitative_review: true` (or provide
+  `quantitative_review_records`) and use the supplied `Standar Baku Hasil
+  Agent.xlsx`. The workbook is preflighted before the workflow starts; missing
+  templates or unavailable tools stop the run. Forty is an initial target, not
+  a maximum; select exactly N only when explicitly requested (the structured
+  option or “tepat N artikel”). Keep the full corpus and screening reasons.
+  “Artikel terbaik” without a count requires structured clarification; independent
+  verification and corpus storage may continue.
+- Do not trust APPROVED, FULL_TEXT, quote_verified, or total_score flags from raw
+  input. Recheck metadata snapshots, retrieval hashes, article identity, readable
+  full manuscript content, located quotes, and logged examination/assessment.
+- `require_free_full_text` is a project policy, not a global restriction. Main
+  synthesis/final ranking require scientific eligibility and legally free,
+  obtained, readable manuscripts. Retain other candidates and their reasons.
+- Keep technical execution separate from scientific readiness. Preserve `success`
+  compatibility; report `execution_success`, `result_status`,
+  `finalization_allowed`, and `needs_human_review` in response metadata/run summary.
+  PARTIAL workbook/scoring, incomplete required sections, and unresolved blocking
+  review items prevent final DOCX. Resolved items and optional warnings do not.
+
 ## Commands
 
 Health check:
@@ -66,7 +99,9 @@ python -m src finalize path\to\project
 - Do not invent sources, DOI, quotes, page numbers, or evidence.
 - Only pass claims/evidence/sources that are already represented in JSON.
 - Academic final outputs must not contain internal ChatGPT/File citation tokens such as `turn...`, `view...`, `search...`, or `filecite`.
-- Academic final outputs must convert every verified source into APA 7 in-text citations and a bibliography entry, or mark the source as `[sumber belum lengkap]`.
+- Academic final outputs use APA 7 pointers and references for sources actually
+  cited. Available, assessed, synthesized, and cited counts may differ; never
+  force every available source into the body. Mark missing metadata consistently.
 - For every data source, legal source, and scientific article, report the source name, year, title, link/DOI when available, and page/section when available.
 - Every final academic output must be reviewed and verified by a human expert before publication or submission.
 - Never finalize academic output (SourceState.APPROVED or final DOCX) if sources have not been verified against real bibliographic databases (Crossref/PubMed/etc.).

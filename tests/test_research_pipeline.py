@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from conftest import fixture_source
 
 from src.core.storage import read_jsonl
 from src.runtime.cli import main
@@ -48,6 +49,7 @@ class MockBookProvider(ResearchTool):
 
 def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path) -> None:
     project = _make_project(tmp_path, "ocean_plastic_proj")
+    project.output_type = "literature_review"
 
     s1 = Source(
         id="src_b1",
@@ -80,6 +82,8 @@ def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path) -> None:
         abstract="Synthetic microfibers disrupt digestion and reproductive health in filter-feeding organisms.",
     )
 
+    fixture_source(s1, root=project.directory / "source_documents", cache_report=True)
+    fixture_source(s2, root=project.directory / "source_documents", cache_report=True)
     provider = MockBookProvider([s1, s2])
 
     workflow = DeepResearchWorkflow()
@@ -95,8 +99,9 @@ def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path) -> None:
     assert response.success is True
     assert response.draft_path is not None
     assert Path(response.draft_path).is_file()
-    assert response.docx_path is not None
-    assert Path(response.docx_path).is_file()
+    assert response.docx_path is None
+    assert response.metadata["finalization_allowed"] is False
+    assert response.metadata["result_status"] == "PARTIAL"
 
     # Verify stages executed
     expected_stages = [
@@ -116,7 +121,6 @@ def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path) -> None:
         "writing",
         "citation_audit",
         "fact_audit",
-        "docx_generation",
     ]
     for stg in expected_stages:
         assert stg in response.stages
@@ -237,6 +241,11 @@ def test_research_pipeline_preserves_conflicting_sources(tmp_path: Path) -> None
         contradicting_evidence=["ev_con"],
     )
 
+    fixture_source(s1)
+    fixture_source(s2)
+    for ev in (ev1, ev2):
+        ev.extraction_method = ExtractionMethod.VERBATIM_ABSTRACT
+        ev.location = EvidenceLocation(locator="abstract")
     response = DeepResearchWorkflow().execute(
         DeepResearchRequest(
             project=project,
@@ -395,6 +404,8 @@ def test_artifact_store_persistence_and_run_directory_structure(tmp_path: Path) 
         abstract="Agroforestry diversification provides supplemental food reserves and buffers microclimate extremes during severe droughts.",
     )
 
+    fixture_source(s1, root=project.directory / "source_documents", cache_report=True)
+    fixture_source(s2, root=project.directory / "source_documents", cache_report=True)
     provider = MockBookProvider([s1, s2])
     workflow = DeepResearchWorkflow()
     response = workflow.execute(
@@ -796,6 +807,9 @@ def test_property_7_consequential_claim_fact_audit_gate_and_publication_halting(
         supporting_evidence=["evd_prop7_1"],
     )
 
+    fixture_source(s1)
+    ev1.extraction_method = ExtractionMethod.VERBATIM_ABSTRACT
+    ev1.location = EvidenceLocation(locator="abstract")
     # 1. Execute workflow with NO semantic review passed
     workflow = DeepResearchWorkflow()
     response = workflow.execute(

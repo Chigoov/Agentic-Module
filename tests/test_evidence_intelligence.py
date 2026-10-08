@@ -289,7 +289,7 @@ def test_review_queue_has_blocking_items() -> None:
     assert queue.has_blocking_items("clm_1") is True
     assert queue.has_blocking_items("clm_2") is False
     assert queue.has_blocking_items("clm_3") is False
-    assert queue.has_blocking_items("clm_4") is False
+    assert queue.has_blocking_items("clm_4") is True
     assert queue.has_blocking_items("clm_nonexistent") is False
 
 

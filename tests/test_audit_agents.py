@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from conftest import fixture_source
 
 from src.agents.audit import (
     CitationAuditAgent,
@@ -95,6 +96,7 @@ def test_fact_audit_passes_writable_claim(tmp_path: Path) -> None:
         reviewer="antigravity_agent",
         method="semantic_evaluation",
     )
+    fixture_source(source, evidence.evidence_text)
     response = FactAuditAgent().execute(
         FactAuditRequest(
             project=_project(tmp_path),

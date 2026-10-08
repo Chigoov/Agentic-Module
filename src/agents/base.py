@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict
 
 from src.core.errors import HumanReviewRequired
 from src.core.logging import get_logger
+from src.runtime.progress import progress_context, progress_scope, record_progress
 
 __all__ = [
     "AgentRequest",
@@ -90,6 +91,33 @@ class BaseAgent(ABC, Generic[TRequest, TResponse]):
         self._logger = get_logger(f"agents.{self.name}")
 
     def execute(self, request: TRequest) -> TResponse:
+        """Publish real lifecycle events for CLI and API callers alike."""
+        root_job = not progress_context()
+        project = getattr(request, "project", None)
+        fields = {"agent_id": self.name}
+        if project is not None:
+            fields.update(project_path=str(project.directory), project_name=project.title or project.name)
+        with progress_scope(**fields):
+            kind = "job" if root_job else "agent"
+            self._progress("running", kind)
+            response = self._execute_logged(request)
+            status = str(response.metadata.get("result_status") or "").lower()
+            if status not in {"partial", "failed", "blocked"}:
+                status = "partial" if response.needs_human_review or getattr(response, "failed", []) else "completed" if response.success else "failed"
+            counts = {}
+            if hasattr(response, "parsed_text_by_source"):
+                counts["retrieved"] = len(response.parsed_text_by_source)
+            self._progress(status, kind, result_status=response.metadata.get("result_status"),
+                run_id=getattr(response, "run_id", None), finalization_allowed=response.metadata.get("finalization_allowed"), **counts)
+            return response
+
+    def _progress(self, status: str, kind: str, **extra: Any) -> None:
+        try:
+            record_progress(self.name, status, message=self.name, event_kind=kind, **extra)
+        except (OSError, ValueError) as exc:
+            self._logger.warning("Progress unavailable", extra={"error": str(exc)})
+
+    def _execute_logged(self, request: TRequest) -> TResponse:
         """Public entry point: log, invoke, and capture unhandled errors.
 
         Returns
@@ -124,6 +152,9 @@ class BaseAgent(ABC, Generic[TRequest, TResponse]):
             response = self._make_error_response(  # type: ignore[assignment]
                 error_message=f"{self.name} raised an unhandled exception: {exc}"
             )
+            response.metadata["execution_success"] = False
+            response.metadata["result_status"] = "FAILED"
+            response.metadata["finalization_allowed"] = False
 
         self._logger.info(
             "Agent completed",

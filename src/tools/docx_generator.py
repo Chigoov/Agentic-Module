@@ -7,8 +7,10 @@ import tempfile
 from pathlib import Path
 
 from docx import Document
+from src.schemas.source import Source
 
 from src.core.storage import backup_file
+from src.workflows.gates import check_document_quality
 from src.schemas.citation import ReferenceList
 from src.schemas.project import Project, ProjectArtifact
 from src.tools.base import BaseTool, ToolRequest, ToolResponse
@@ -22,6 +24,8 @@ class DocxGenerationRequest(ToolRequest):
     reference_list: ReferenceList | None = None
     citation_audit_passed: bool
     fact_audit_passed: bool
+    sources: list[Source] | None = None
+    quantitative_workbook_status: str | None = None
 
 
 class DocxGenerationResponse(ToolResponse):
@@ -34,16 +38,29 @@ class DocxGenerationTool(BaseTool[DocxGenerationRequest, DocxGenerationResponse]
     tool_name = "docx_generation"
 
     def _execute(self, request: DocxGenerationRequest) -> DocxGenerationResponse:
+        if request.project.research_options.get("quantitative_review") and request.quantitative_workbook_status != "PASS":
+            return DocxGenerationResponse.failure(error_code="WORKBOOK_NOT_FINAL", error_message="Quantitative workbook/scoring must pass before final document generation")
+        from src.tools.citation_manager import author_year_mentions
+        if request.reference_list and request.reference_list.entries and request.sources is None:
+            return DocxGenerationResponse.failure(error_code="REFERENCES_UNVERIFIABLE", error_message="Sources are required to reconcile the structured reference list")
+        if request.reference_list is None and any(author_year_mentions(request.draft)):
+            return DocxGenerationResponse.failure(error_code="REFERENCES_UNVERIFIABLE", error_message="Body citations require a structured reference list")
         if not (request.citation_audit_passed and request.fact_audit_passed):
             return DocxGenerationResponse.failure(
                 error_code="AUDIT_NOT_PASSED",
                 error_message="DOCX generation requires passed citation and fact audits",
             )
 
+        quality = check_document_quality(request.draft, request.project, request.reference_list, request.sources)
+        from src.schemas.review import ReviewQueue
+        if ReviewQueue.load(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE)).blocking_items():
+            return DocxGenerationResponse.failure(error_code="REVIEW_PENDING", error_message="Blocking review items remain unresolved")
+        if not quality["passed"]:
+            return DocxGenerationResponse.failure(error_code="DOCUMENT_INCOMPLETE", error_message="; ".join(quality["findings"]))
         path = request.project.artifact_path(ProjectArtifact.FINAL_DOCX)
         backup = backup_file(path, root=request.project.directory)
         doc = Document()
-        self._add_markdown(doc, request.draft)
+        self._add_markdown(doc, request.draft, skip_references=bool(request.reference_list and request.reference_list.entries))
         if request.reference_list and request.reference_list.entries:
             doc.add_heading("References", level=1)
             for entry in request.reference_list.entries:
@@ -67,7 +84,7 @@ class DocxGenerationTool(BaseTool[DocxGenerationRequest, DocxGenerationResponse]
         return DocxGenerationResponse(docx_path=str(path), backup_path=str(backup) if backup else None)
 
     @staticmethod
-    def _add_markdown(doc: Document, text: str) -> None:
+    def _add_markdown(doc: Document, text: str, *, skip_references: bool = False) -> None:
         # The draft carries its own "## References" section (single ID→label
         # mapping for the Markdown package). When a structured reference list
         # is supplied, the DOCX appends its own References heading, so the
@@ -81,12 +98,12 @@ class DocxGenerationTool(BaseTool[DocxGenerationRequest, DocxGenerationResponse]
             if not line:
                 index += 1
                 continue
-            if line.startswith("## References"):
+            if skip_references and line.casefold() in {"## references", "## referensi", "## daftar pustaka"}:
                 in_draft_references = True
                 index += 1
                 continue
             if in_draft_references:
-                if line.startswith("- "):
+                if not line.startswith("#"):
                     index += 1
                     continue  # draft bibliography bullet; DOCX adds its own
                 in_draft_references = False

@@ -8,15 +8,24 @@ from pydantic import Field
 
 from src.agents.audit import HumanStyleAuditAgent, HumanStyleAuditRequest
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
-from src.core.errors import HumanReviewRequired
 from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project, ProjectArtifact
 from src.schemas.source import Source
 from src.tools.docx_generator import DocxGenerationRequest, DocxGenerationTool
+from src.tools.quantitative_review_workbook import (
+    build_quantitative_review_workbook,
+    resolve_standard_workbook_template,
+    source_to_review_record,
+)
+from src.runtime.execution import ensure_workflow_ready, resolve_source_paths
 from src.workflows.audit_trail import AcademicRunAudit
 from src.workflows.orchestrator import OrchestratorAgent, OrchestratorRequest
+from src.workflows.gates import check_document_quality
+from src.core.storage import write_json
+from src.schemas.review import ReviewQueue
+from src.tools.source_content import inspect_source
 
 __all__ = ["AcademicWritingRequest", "AcademicWritingResponse", "AcademicWritingWorkflow"]
 
@@ -32,6 +41,14 @@ class AcademicWritingRequest(AgentRequest):
     input_path: str | None = None
     semantic_reviews: list[SemanticReview] = Field(default_factory=list)
     verification_engine: Any = None
+    quantitative_review: bool = False
+    quantitative_review_records: list[dict[str, Any]] = Field(default_factory=list)
+    quantitative_review_template: str | None = None
+    quantitative_review_summary: dict[str, Any] = Field(default_factory=dict)
+    quantitative_review_request: str = ""
+    quantitative_review_exact_count: int | None = None
+    quantitative_review_best_count: int | None = None
+    require_free_full_text: bool = False
 
 
 class AcademicWritingResponse(AgentResponse):
@@ -40,6 +57,9 @@ class AcademicWritingResponse(AgentResponse):
     docx_path: str | None = None
     run_id: str | None = None
     run_dir: str | None = None
+    quantitative_workbook_path: str | None = None
+    quantitative_report_path: str | None = None
+    checksum_manifest_path: str | None = None
 
 
 class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingResponse]):
@@ -53,134 +73,150 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
             error_message=error_message,
             run_id=extra.get("run_id") if isinstance(extra.get("run_id"), str) else None,
             run_dir=extra.get("run_dir") if isinstance(extra.get("run_dir"), str) else None,
+            quantitative_workbook_path=extra.get("quantitative_workbook_path") if isinstance(extra.get("quantitative_workbook_path"), str) else None,
+            quantitative_report_path=extra.get("quantitative_report_path") if isinstance(extra.get("quantitative_report_path"), str) else None,
+            checksum_manifest_path=extra.get("checksum_manifest_path") if isinstance(extra.get("checksum_manifest_path"), str) else None,
         )
 
     def _execute(self, request: AcademicWritingRequest) -> AcademicWritingResponse:
-        audit = AcademicRunAudit.start(
-            project=request.project,
-            claims=request.claims,
-            evidence=request.evidence,
-            sources=request.sources,
-            outline=request.outline,
-            command=request.command or "run-academic",
-            input_path=request.input_path,
-        )
-
-        # Load persisted semantic reviews if available
+        resolve_source_paths(request.sources, request.project)
+        options = review_options(request.model_dump(exclude_unset=True), request.project)
+        for name, value in options.items():
+            setattr(request, name, value)
+        write_json(request.project.directory / "workflow_options.json", options, root=request.project.directory, overwrite=True)
+        request.project.research_options.update(options)
+        write_json(request.project.directory / "project.json", request.project.model_dump(mode="json"), root=request.project.directory, overwrite=True)
+        required_tools = [DocxGenerationTool()] if request.generate_docx else []
+        required_tools.extend(getattr(request.verification_engine, "_providers", ()))
+        review_template = resolve_standard_workbook_template(request.quantitative_review_template) if request.quantitative_review or request.quantitative_review_records else None
+        readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
+        audit = AcademicRunAudit.start(project=request.project, claims=request.claims, evidence=request.evidence,
+            sources=request.sources, outline=request.outline, command=request.command or "run-academic", input_path=request.input_path)
+        write_json(audit.run_dir / "workflow_options.json", options, root=request.project.directory, overwrite=True)
+        search_summary = audit.snapshot_search_summary(request.quantitative_review_summary)
         semantic_reviews = list(request.semantic_reviews)
         sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
         if sem_path.is_file():
-            try:
-                from src.core.storage import read_json
-                raw_sem = read_json(sem_path)
-                if isinstance(raw_sem, list):
-                    for item in raw_sem:
-                        sr = SemanticReview.model_validate(item)
-                        if not any(r.claim_id == sr.claim_id for r in semantic_reviews):
-                            semantic_reviews.append(sr)
-            except Exception:
-                pass
-
+            import json
+            for raw in json.loads(sem_path.read_text(encoding="utf-8")):
+                item = SemanticReview.model_validate(raw)
+                if not any(r.claim_id == item.claim_id for r in semantic_reviews):
+                    semantic_reviews.append(item)
+        write_json(sem_path, [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
+        write_json(audit.run_dir / "semantic_reviews.json", [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
+        quantitative = None
+        orchestrated = None
+        stages = []
         try:
-            orchestrated = OrchestratorAgent().execute(
-                OrchestratorRequest(
-                    project=request.project,
-                    claims=request.claims,
-                    evidence=request.evidence,
-                    sources=request.sources,
-                    outline=request.outline,
-                    semantic_reviews=semantic_reviews,
-                    verification_engine=request.verification_engine,
-                )
-            )
-            if not orchestrated.success:
-                audit.finish(
-                    success=False,
-                    stages=orchestrated.stages,
-                    draft_path=orchestrated.draft_path,
-                    error_message=orchestrated.error_message,
-                )
-                return AcademicWritingResponse(
-                    success=False,
-                    needs_human_review=orchestrated.needs_human_review,
-                    review_prompt=orchestrated.review_prompt,
-                    error_message=orchestrated.error_message,
-                    stages=orchestrated.stages,
-                    draft_path=orchestrated.draft_path,
-                    run_id=audit.run_id,
-                    run_dir=str(audit.run_dir),
-                )
-
-            stages = list(orchestrated.stages)
-
-            # Enforce human-doc-output-guard prior to document finalization
-            HumanStyleAuditAgent().execute(
-                HumanStyleAuditRequest(
-                    project=request.project,
-                    draft=orchestrated.draft,
-                    sources=request.sources,
-                )
-            )
-
-            docx_path: str | None = None
-            if request.generate_docx:
-                docx = DocxGenerationTool().execute(
-                    DocxGenerationRequest(
-                        project=request.project,
-                        draft=orchestrated.draft,
-                        reference_list=orchestrated.reference_list,
-                        citation_audit_passed=orchestrated.citation_audit_passed,
-                        fact_audit_passed=orchestrated.fact_audit_passed,
-                    )
-                )
+            synthesis_sources = request.sources
+            if request.require_free_full_text:
+                synthesis_sources = [source for source in request.sources if (proof := inspect_source(source, request.project.directory))["legal_free"] and proof["scientific_eligible"]]
+                write_json(audit.run_dir / "access_screening.json", [dict(source_id=source.id, included=source in synthesis_sources,
+                    version=source.metadata.get("version", "unverified"), proof={k:v for k,v in inspect_source(source, request.project.directory).items() if k not in {"text", "pages"}}) for source in request.sources], root=request.project.directory, overwrite=True)
+            used_ids = {source.id for source in synthesis_sources}
+            evidence = [e for e in request.evidence if e.source_id in used_ids]
+            evidence_ids = {e.id for e in evidence}
+            claims = [c for c in request.claims if set(c.supporting_sources).issubset(used_ids) and set(c.supporting_evidence).issubset(evidence_ids)]
+            orchestrated = OrchestratorAgent().execute(OrchestratorRequest(project=request.project,
+                claims=claims, evidence=evidence, sources=synthesis_sources, outline=request.outline,
+                semantic_reviews=semantic_reviews, verification_engine=request.verification_engine))
+            write_json(request.project.artifact_path(ProjectArtifact.VERIFIED_SOURCES),
+                [source.model_dump(mode="json") for source in request.sources], root=request.project.directory, overwrite=True)
+            write_json(audit.run_dir / "verified_sources_snapshot.json",
+                [source.model_dump(mode="json") for source in request.sources], root=request.project.directory, overwrite=True)
+            stages.extend(orchestrated.stages)
+            if review_template:
+                records = request.quantitative_review_records or [source_to_review_record(source) for source in request.sources]
+                quantitative = build_quantitative_review_workbook(records, audit.run_dir / "review" / "quantitative_review.xlsx",
+                    template_path=review_template, summary=search_summary,
+                    request_text=request.quantitative_review_request or request.project.user_request,
+                    exact_count=request.quantitative_review_exact_count, best_count=request.quantitative_review_best_count,
+                    require_free_full_text=request.require_free_full_text).to_dict()
+                stages.append("quantitative_review_workbook")
+            quality = check_document_quality(orchestrated.draft, request.project, orchestrated.reference_list, synthesis_sources)
+            queue = ReviewQueue.load(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE))
+            findings = list(quality["findings"])
+            if queue.blocking_items(): findings.append("blocking review items remain unresolved")
+            if quantitative and quantitative["status"] != "PASS": findings.append("workbook/scoring is PARTIAL")
+            allowed = orchestrated.success and not findings
+            if orchestrated.draft:
+                style = HumanStyleAuditAgent().execute(HumanStyleAuditRequest(project=request.project, draft=orchestrated.draft, sources=synthesis_sources))
+                if not style.success or not style.passed:
+                    findings.append(style.error_message or "human style audit requires review")
+                    allowed = False
+            docx_path = None
+            execution_ok = orchestrated.metadata.get("execution_success", True)
+            if not execution_ok:
+                allowed = False
+            error = orchestrated.error_message
+            if allowed and request.generate_docx:
+                docx = DocxGenerationTool().execute(DocxGenerationRequest(project=request.project, draft=orchestrated.draft,
+                    reference_list=orchestrated.reference_list, citation_audit_passed=orchestrated.citation_audit_passed,
+                    fact_audit_passed=orchestrated.fact_audit_passed, sources=synthesis_sources,
+                    quantitative_workbook_status=quantitative["status"] if quantitative else None))
                 stages.append("docx_generation")
-                if not docx.success:
-                    audit.finish(
-                        success=False,
-                        stages=stages,
-                        draft_path=orchestrated.draft_path,
-                        error_message=docx.error_message,
-                    )
-                    return AcademicWritingResponse(
-                        success=False,
-                        error_message=docx.error_message,
-                        stages=stages,
-                        draft_path=orchestrated.draft_path,
-                        run_id=audit.run_id,
-                        run_dir=str(audit.run_dir),
-                    )
                 docx_path = docx.docx_path
-
-            audit.finish(
-                success=True,
-                stages=stages,
-                draft_path=orchestrated.draft_path,
-                docx_path=docx_path,
-            )
-
-            return AcademicWritingResponse(
-                stages=stages,
-                draft_path=orchestrated.draft_path,
-                docx_path=docx_path,
-                run_id=audit.run_id,
-                run_dir=str(audit.run_dir),
-            )
-        except HumanReviewRequired as exc:
-            audit.finish(
-                success=False,
-                error_message=str(exc),
-            )
-            return AcademicWritingResponse(
-                success=False,
-                needs_human_review=True,
-                review_prompt=exc.render(),
-                error_message=str(exc),
-                run_id=audit.run_id,
-                run_dir=str(audit.run_dir),
-            )
+                if not docx.success:
+                    execution_ok = False
+                    allowed = False
+                    error = docx.error_message
+            metadata = {
+                "readiness": readiness, "execution_success": execution_ok,
+                "result_status": "FAILED" if not execution_ok else ("PASS" if allowed else "PARTIAL"), "finalization_allowed": allowed,
+                "needs_human_review": not allowed,
+                "human_style_audit_passed": style.passed if orchestrated.draft else False,
+                "document_quality": quality, "quantitative_review": quantitative,
+                "clarification": quantitative["counts"].get("clarification") if quantitative else None,
+                "citation_audit_passed": orchestrated.citation_audit_passed, "fact_audit_passed": orchestrated.fact_audit_passed,
+                "review_findings": findings, "blocking_review_items": [i.to_dict() for i in queue.blocking_items()],
+                "references": {"available": len(request.sources), "assessed": len(synthesis_sources),
+                    "synthesis": quality["references"]["cited"] if quality["references"] else 0,
+                    "cited": quality["references"]["cited"] if quality["references"] else 0,
+                    "written": [entry.model_dump(mode="json") for entry in orchestrated.reference_list.entries] if docx_path and orchestrated.reference_list else [],
+                    "draft_entries": [entry.model_dump(mode="json") for entry in orchestrated.reference_list.entries] if orchestrated.reference_list else []},
+            }
+            # Keep success compatible with the established orchestrator/audit contract.
+            success = orchestrated.success and execution_ok
+            summary = audit.finish(success=success, stages=stages, draft_path=orchestrated.draft_path, docx_path=docx_path,
+                quantitative_workbook_path=quantitative["workbook_path"] if quantitative else None,
+                quantitative_report_path=quantitative["report_path"] if quantitative else None,
+                checksum_manifest_path=quantitative["manifest_path"] if quantitative else None,
+                error_message=error, result_metadata=metadata)
+            if quantitative:
+                from src.tools.quantitative_review_workbook import update_workflow_report
+                update_workflow_report(quantitative, summary)
+            return AcademicWritingResponse(success=success, needs_human_review=not allowed,
+                review_prompt="; ".join(findings) or orchestrated.review_prompt, error_message=error, stages=stages,
+                draft_path=orchestrated.draft_path, docx_path=docx_path, run_id=audit.run_id, run_dir=str(audit.run_dir),
+                quantitative_workbook_path=quantitative["workbook_path"] if quantitative else None,
+                quantitative_report_path=quantitative["report_path"] if quantitative else None,
+                checksum_manifest_path=quantitative["manifest_path"] if quantitative else None, metadata=metadata)
         except Exception as exc:
-            audit.finish(
-                success=False,
-                error_message=str(exc),
-            )
-            raise
+            metadata = {"execution_success": False, "result_status": "FAILED", "finalization_allowed": False, "needs_human_review": True, "quantitative_review": quantitative}
+            paths = dict(quantitative_workbook_path=quantitative["workbook_path"] if quantitative else None,
+                quantitative_report_path=quantitative["report_path"] if quantitative else None,
+                checksum_manifest_path=quantitative["manifest_path"] if quantitative else None)
+            summary = audit.finish(success=False, stages=stages, draft_path=orchestrated.draft_path if orchestrated else None,
+                error_message=str(exc), result_metadata=metadata, **paths)
+            error = str(exc)
+            if quantitative:
+                from src.tools.quantitative_review_workbook import update_workflow_report
+                try:
+                    update_workflow_report(quantitative, summary)
+                except (OSError, ValueError) as report_error:
+                    error += f"; failed to update report/manifest: {report_error}"
+            return AcademicWritingResponse(success=False, error_message=error, needs_human_review=True,
+                draft_path=orchestrated.draft_path if orchestrated else None,
+                run_id=audit.run_id, run_dir=str(audit.run_dir), stages=stages, metadata=metadata, **paths)
+
+
+def review_options(payload: dict, project: Project) -> dict:
+    """One option contract for CLI, API, resume and finalize."""
+    fields = [name for name in AcademicWritingRequest.model_fields if name.startswith("quantitative_review") or name == "require_free_full_text"]
+    merged = dict(project.research_options)
+    merged.update({name: payload[name] for name in fields if name in payload})
+    options = {name: merged[name] for name in fields if name in merged}
+    if options.get("quantitative_review_records"):
+        options["quantitative_review"] = True
+    validated = AcademicWritingRequest(project=project, **options)
+    return {name: getattr(validated, name) for name in options}

@@ -72,3 +72,34 @@ def manager_with_temp_workspace(
 
     config = get_config()
     return config, temp_workspace
+
+
+def fixture_source(source, text=None, root=None, *, cache_report=False):
+    """Explicit synthetic artifact for tests; never a real provider verification."""
+    import hashlib
+    import json
+    from datetime import datetime, timezone
+    root = Path(root or tempfile.mkdtemp(prefix="aai-source-fixture-"))
+    root.mkdir(parents=True, exist_ok=True)
+    if text is not None:
+        source.abstract = text
+    stamp = datetime.now(timezone.utc).isoformat()
+    content = (source.title + "\nMethods\n" + (source.abstract or "") + "\nResults\nFixture result.\nDiscussion\nFixture discussion.\nReferences\nFixture reference.").encode("utf-8")
+    path = root / (source.id + ".txt")
+    path.write_bytes(content)
+    digest = hashlib.sha256(content).hexdigest()
+    source.retrieval_path = str(path)
+    source.metadata["retrieval"] = {"sha256": digest, "retrieved_at": stamp, "origin": "synthetic unit-test fixture", "retrieval_method": "fixture"}
+    snapshot = {"source_id": source.id, "title": source.title, "doi": source.doi, "verified_at": stamp,
+        "provider_records": [{"provider": "synthetic fixture provider", "record": source.model_dump(mode="json")}]}
+    if cache_report:
+        from src.schemas.verification import VerificationReport, VerificationCheck
+        report = VerificationReport(source_id=source.id, overall_status="METADATA_VERIFIED")
+        for level in ("EXISTENCE", "METADATA"):
+            report.add_check(VerificationCheck(name="synthetic_test_check", level=level, status="PASSED", provider="synthetic fixture provider", detail="Unit test only"))
+        snapshot["report"] = report.model_dump(mode="json")
+    raw = json.dumps(snapshot).encode("utf-8")
+    meta = root / (source.id + "-metadata.json")
+    meta.write_bytes(raw)
+    source.metadata["verification_artifact"] = {"path": str(meta), "sha256": hashlib.sha256(raw).hexdigest()}
+    return source

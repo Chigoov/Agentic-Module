@@ -55,14 +55,27 @@ class _TextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.parts: list[str] = []
+        self._ignored = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in {"script", "style"}:
+            self._ignored += 1
+        elif tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "section", "article", "br"}:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"}:
+            self._ignored = max(0, self._ignored - 1)
+        elif tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "section", "article"}:
+            self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
         text = data.strip()
-        if text:
+        if text and not self._ignored:
             self.parts.append(text)
 
     def text(self) -> str:
-        return " ".join(self.parts)
+        return "\n".join(" ".join(line.split()) for line in " ".join(self.parts).splitlines() if line.strip())
 
 
 @dataclass(frozen=True)
@@ -193,7 +206,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             if payload.final_url and payload.final_url != source.url:
                 source.metadata["retrieval_final_url"] = payload.final_url
             if parsed_text:
-                source.update_reading_depth(ReadingDepth.FULL_TEXT, reason="Parsed text from URL content", actor=self.name)
+                source.metadata["parsed_readable"] = True
         else:
             source.retrieval_status = RetrievalStatus.FAILED
             source.record_error(code="NO_RETRIEVABLE_CONTENT", message="Source has neither abstract nor URL")
@@ -203,6 +216,11 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                 source=source,
             )
 
+        source.metadata["retrieval"] = {
+            "retrieval_method": method, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "retrieved_at": datetime.now(UTC).isoformat(), "origin": source.provider or "caller abstract snapshot",
+            "final_url": source.metadata.get("retrieval_final_url") or source.url,
+        }
         source.retrieval_path = str(path)
         source.metadata["file_path"] = f"source_documents/{Path(path).name}"
         if source.source_type == SourceType.BOOK:
@@ -210,7 +228,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             source.metadata["title"] = source.title
             source.metadata["download_url"] = source.url or (source.download_urls[0] if source.download_urls else None)
         source.retrieval_status = RetrievalStatus.RETRIEVED
-        if source.state not in {SourceState.FULLTEXT_RETRIEVED, SourceState.APPROVED}:
+        if method != "abstract" and source.state not in {SourceState.FULLTEXT_RETRIEVED, SourceState.APPROVED}:
             source.transition_to(
                 SourceState.FULLTEXT_RETRIEVED,
                 reason=f"Retrieved source content via {method}",
@@ -388,13 +406,13 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             if pdf_res.success and pdf_res.has_text_layer and pdf_res.full_text:
                 parsed_text = pdf_res.full_text
                 pdf_pages = [p.to_dict() for p in pdf_res.pages]
-                source.update_reading_depth(ReadingDepth.FULL_TEXT, reason="Parsed text from downloaded PDF", actor=self.name)
+                source.metadata["parsed_readable"] = True
             else:
                 source.add_verification_note("OCR_REQUIRED: Downloaded PDF has no extractable text layer")
         else:
             parsed_text = self._parse(payload)
             if parsed_text:
-                source.update_reading_depth(ReadingDepth.FULL_TEXT, reason="Parsed text from downloaded content", actor=self.name)
+                source.metadata["parsed_readable"] = True
 
         # 6. Record retrieval metadata
         retrieval_meta = {

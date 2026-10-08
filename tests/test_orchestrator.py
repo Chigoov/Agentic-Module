@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from conftest import fixture_source
 
 from src.schemas.claim import Claim, ClaimStatus, SupportLevel
 from src.schemas.evidence import Evidence, EvidenceLocation
@@ -40,6 +41,7 @@ def test_orchestrator_writes_and_audits_supported_claim(tmp_path: Path) -> None:
         title="Test",
         sections=[OutlineSection(title="Findings", claim_ids=[claim.id])],
     )
+    fixture_source(source, evidence.evidence_text, tmp_path / "source_fixture")
     response = OrchestratorAgent().execute(
         OrchestratorRequest(
             project=project,

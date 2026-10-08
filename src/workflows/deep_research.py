@@ -9,6 +9,8 @@ Specification anchors:
 from __future__ import annotations
 
 import re
+import hashlib
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import Field
@@ -30,6 +32,7 @@ from src.agents.research import (
 )
 from src.core.storage import append_jsonl, write_json
 from src.runtime.progress import record_progress
+from src.runtime.execution import ensure_workflow_ready, resolve_source_paths
 from src.schemas.claim import Claim, ClaimImportance, ClaimStatus, SemanticReview
 from src.schemas.evidence import (
     SUPPORTING_RELATIONSHIPS,
@@ -37,6 +40,7 @@ from src.schemas.evidence import (
     EvidenceLocation,
     EvidenceRelationship,
     EvidenceStrength,
+    ExtractionMethod,
 )
 from src.schemas.outline import Outline
 from src.schemas.project import Project, ProjectArtifact
@@ -48,8 +52,16 @@ from src.tools.dedupe import deduplicate
 from src.tools.doab import DOABTool
 from src.tools.open_library import OpenLibraryTool
 from src.tools.pdf_parser import find_passage_page_location
+from src.tools.source_content import inspect_source
 from src.tools.verification_tool import VerificationEngine
-from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow
+from src.tools.quantitative_review_workbook import (
+    build_quantitative_review_workbook,
+    resolve_standard_workbook_template,
+    source_to_review_record,
+    update_workflow_report,
+)
+from src.workflows.academic import AcademicWritingRequest, AcademicWritingWorkflow, review_options
+from src.workflows.audit_trail import AcademicRunAudit
 from src.workflows.contradiction import detect_contradictions
 from src.workflows.evidence_flow import evaluate_claim
 
@@ -82,6 +94,14 @@ class DeepResearchRequest(AgentRequest):
     max_retries: int = 3
     command: str = "research"
     input_path: str | None = None
+    quantitative_review: bool = False
+    quantitative_review_records: list[dict[str, Any]] = Field(default_factory=list)
+    quantitative_review_template: str | None = None
+    quantitative_review_summary: dict[str, Any] = Field(default_factory=dict)
+    quantitative_review_request: str = ""
+    quantitative_review_exact_count: int | None = None
+    quantitative_review_best_count: int | None = None
+    require_free_full_text: bool = False
 
 
 class DeepResearchResponse(AgentResponse):
@@ -97,6 +117,8 @@ class DeepResearchResponse(AgentResponse):
     evidence_count: int = 0
     citation_audit_passed: bool = False
     fact_audit_passed: bool = False
+    run_id: str | None = None
+    run_dir: str | None = None
 
 
 class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse]):
@@ -112,8 +134,24 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
         )
 
     def _execute(self, request: DeepResearchRequest) -> DeepResearchResponse:
+        resolve_source_paths(request.sources, request.project)
+        options = review_options(request.model_dump(exclude_unset=True), request.project)
+        for name, value in options.items():
+            setattr(request, name, value)
+        request.project.research_options.update(options)
+        write_json(request.project.directory / "workflow_options.json", options, root=request.project.directory, overwrite=True)
+        write_json(request.project.directory / "project.json", request.project.model_dump(mode="json"), root=request.project.directory, overwrite=True)
         stages: list[str] = ["deep_plan"]
-        review_queue = ReviewQueue()
+        review_queue = ReviewQueue.load(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE))
+        providers = request.providers or default_discovery_providers()
+        required_tools = [] if request.sources else providers
+        required_tools.extend(getattr(request.verification_engine, "_providers", ()))
+        review_template = None
+        if request.quantitative_review or request.quantitative_review_records:
+            review_template = resolve_standard_workbook_template(request.quantitative_review_template)
+        readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
+        if review_template:
+            readiness["quantitative_review_template"] = str(review_template)
 
         # 1. Task Analysis
         record_progress("task_analysis", "running", message=f"Analyzing task: {request.user_request}")
@@ -151,10 +189,10 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
 
         # 3. Discovery
         record_progress("discovery", "running", message="Discovering literature across providers")
+        discovery_failures = []
         if request.sources:
             raw_candidates = list(request.sources)
         else:
-            providers = request.providers or default_discovery_providers()
             discovery_res = DiscoveryAgent().execute(
                 DiscoveryRequest(
                     candidates=[],
@@ -163,7 +201,12 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                     max_results_per_query=5,
                 )
             )
-            raw_candidates = discovery_res.sources
+            raw_candidates = discovery_res.raw_sources or discovery_res.sources
+            discovery_failures = discovery_res.metadata.get("provider_failures", [])
+            for failure in discovery_failures:
+                review_queue.add(ReviewItem(item_type="search", item_id=request.project.id, severity="HIGH",
+                    reason=f"Provider search failed: {failure['provider']} / {failure['query']}: {failure['error']}",
+                    recommended_action="Retry the failed provider or explicitly revise the search scope", blocks_finalization=True))
         stages.append("discovery")
         record_progress("discovery", "completed", count=len(raw_candidates))
 
@@ -178,9 +221,16 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
 
         # 5. Ranking
         record_progress("ranking", "running", message="Ranking candidates by evidence value")
-        ranked = rank_sources(deduped)[: request.max_sources]
+        ranked = rank_sources(deduped)
+        if not (request.quantitative_review or request.quantitative_review_records):
+            ranked = ranked[: request.max_sources]
         stages.append("ranking")
         record_progress("ranking", "completed", ranked=len(ranked))
+        search_log = request.project.directory / "search_log.json"
+        write_json(search_log, {"recorded_at": datetime.now(timezone.utc).isoformat(), "origin": "deep_research.discovery",
+            "queries": queries, "provider_failures": discovery_failures, "records_by_stage": {key: [{"id": s.id, "title": s.title, "doi": s.doi, "provider": s.provider} for s in sources]
+                for key, sources in (("found", raw_candidates), ("deduplicated", deduped), ("screened", ranked))}}, root=request.project.directory, overwrite=True)
+        request.quantitative_review_summary.update(search_log_path=str(search_log), search_log_sha256=hashlib.sha256(search_log.read_bytes()).hexdigest())
 
         # 6. Metadata Verification
         record_progress("verification", "running", message="Verifying bibliographic metadata and DOIs")
@@ -274,14 +324,13 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                     if not any(marker in sent.lower() for marker in ("function (", "function(", "var ", "datalayer", "window.", "document.", "tagname", "{ w[l]", "view of the file"))
                 ]
                 for sent in sentences[:2]:
-                    if s.abstract and sent not in s.abstract and sent in clean_text:
-                        s.abstract = clean_text
                     clm_id = f"clm_{len(claims_list) + 1}"
                     evd_id = f"evd_{len(evidence_list) + 1}"
                     pdf_pages = s.metadata.get("pdf_pages") or []
                     loc = find_passage_page_location(sent, pdf_pages) if pdf_pages else None
                     if loc is None:
-                        loc = EvidenceLocation(locator="abstract" if s.abstract else "p. 1")
+                        in_abstract = bool(s.abstract and " ".join(sent.split()) in " ".join(s.abstract.split()))
+                        loc = EvidenceLocation(locator="abstract" if in_abstract else "retrieved body")
 
                     ev_item = Evidence(
                         id=evd_id,
@@ -289,12 +338,15 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                         source_id=s.id,
                         evidence_text=sent,
                         verbatim=True,
-                        quote_verified=True,
+                        quote_verified=False,
+                        extraction_method=ExtractionMethod.VERBATIM_ABSTRACT if loc.locator == "abstract" else ExtractionMethod.VERBATIM_FULLTEXT,
                         location=loc,
                         relationship=EvidenceRelationship.SUPPORTS,
                         strength=EvidenceStrength.DEFINITIVE,
                         confidence=1.0,
                     )
+                    from src.tools.source_content import recheck_quote
+                    recheck_quote(s, ev_item, request.project.directory)
                     clm_item = Claim(
                         id=clm_id,
                         claim_text=sent,
@@ -392,7 +444,29 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
             )
             review_queue.save(queue_path, root=request.project.directory)
 
-        has_critical = any(i.severity == "CRITICAL" for i in review_queue.items)
+        has_critical = bool(review_queue.blocking_items())
+        quantitative_metadata: dict[str, Any] | None = None
+        halted_audit = None
+        if has_critical or not evaluated_claims:
+            halted_audit = AcademicRunAudit.start(project=request.project, claims=evaluated_claims,
+                evidence=evidence_list, sources=verified_sources, outline=request.outline,
+                command=request.command, input_path=request.input_path)
+            write_json(halted_audit.run_dir / "workflow_options.json", options, root=request.project.directory, overwrite=True)
+            request.quantitative_review_summary = halted_audit.snapshot_search_summary(request.quantitative_review_summary)
+        if request.quantitative_review or request.quantitative_review_records:
+            if has_critical or not evaluated_claims:
+                records = request.quantitative_review_records or [source_to_review_record(source) for source in verified_sources]
+                quantitative_metadata = build_quantitative_review_workbook(
+                    records,
+                    halted_audit.run_dir / "review" / "quantitative_review.xlsx",
+                    template_path=review_template,
+                    summary=request.quantitative_review_summary,
+                    request_text=request.quantitative_review_request or request.user_request,
+                    exact_count=request.quantitative_review_exact_count,
+                    best_count=request.quantitative_review_best_count,
+                    require_free_full_text=request.require_free_full_text,
+                ).to_dict()
+                stages.append("quantitative_review_workbook")
         if has_critical or not evaluated_claims:
             stages.append("human_review")
             record_progress("human_review", "pending", message="Human review required before draft finalization")
@@ -400,6 +474,17 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                 f"{idx + 1}. {i.reason}\n   Action: {i.recommended_action}"
                 for idx, i in enumerate(review_queue.items)
             )
+            metadata = {"readiness": readiness, "quantitative_review": quantitative_metadata,
+                "execution_success": False, "result_status": "PARTIAL", "finalization_allowed": False,
+                "needs_human_review": True, "review_findings": [i.reason for i in review_queue.items if i.status == "PENDING"],
+                "blocking_review_items": [i.to_dict() for i in review_queue.blocking_items()]}
+            summary = halted_audit.finish(success=False, stages=stages, error_message="Workflow halted: human review required",
+                quantitative_workbook_path=quantitative_metadata["workbook_path"] if quantitative_metadata else None,
+                quantitative_report_path=quantitative_metadata["report_path"] if quantitative_metadata else None,
+                checksum_manifest_path=quantitative_metadata["manifest_path"] if quantitative_metadata else None,
+                result_metadata=metadata)
+            if quantitative_metadata:
+                update_workflow_report(quantitative_metadata, summary)
             return DeepResearchResponse(
                 success=False,
                 needs_human_review=True,
@@ -412,6 +497,7 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                 sources_count=len(verified_sources),
                 claims_count=len(evaluated_claims),
                 evidence_count=len(evidence_list),
+                metadata=metadata, run_id=halted_audit.run_id, run_dir=str(halted_audit.run_dir),
             )
 
         # 12-16. Synthesis, Writing, Citation Audit, Fact Audit, DOCX Generation
@@ -442,9 +528,17 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                 outline=request.outline,
                 semantic_reviews=semantic_reviews,
                 verification_engine=request.verification_engine,
-                generate_docx=request.generate_docx and not any(i.severity in {"CRITICAL", "HIGH"} for i in review_queue.items),
+                generate_docx=request.generate_docx and not review_queue.blocking_items(),
                 command=request.command,
                 input_path=request.input_path,
+                quantitative_review=request.quantitative_review,
+                quantitative_review_records=request.quantitative_review_records,
+                quantitative_review_template=str(review_template) if review_template else request.quantitative_review_template,
+                quantitative_review_summary=request.quantitative_review_summary,
+                quantitative_review_request=request.quantitative_review_request or request.user_request,
+                quantitative_review_exact_count=request.quantitative_review_exact_count,
+                quantitative_review_best_count=request.quantitative_review_best_count,
+                require_free_full_text=request.require_free_full_text,
             )
         )
 
@@ -452,15 +546,17 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
         if academic.docx_path:
             stages.append("docx_generation")
 
-        citation_passed = academic.success and "citation_audit" in academic.stages
-        fact_passed = academic.success and "fact_audit" in academic.stages
+        citation_passed = academic.metadata.get("citation_audit_passed", False)
+        fact_passed = academic.metadata.get("fact_audit_passed", False)
 
         record_progress("citation_audit", "completed", passed=citation_passed)
         record_progress("fact_audit", "completed", passed=fact_passed)
         if academic.docx_path:
             record_progress("docx_generation", "completed", path=academic.docx_path)
 
-        needs_review = bool(academic.needs_human_review) or len(review_queue.items) > 0 or not academic.success
+        review_queue = ReviewQueue.load(queue_path)
+        has_critical = bool(review_queue.blocking_items())
+        needs_review = bool(academic.needs_human_review) or has_critical or not academic.success
         if not academic.success and academic.error_message:
             for reason in academic.error_message.split("; "):
                 review_queue.add(
@@ -484,6 +580,21 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
             for idx, i in enumerate(review_queue.items)
         )
 
+        metadata = {"readiness": readiness, **(academic.metadata or {}),
+            "result_status": "FAILED" if academic.metadata.get("execution_success") is False else ("PARTIAL" if needs_review else academic.metadata.get("result_status", "PARTIAL")),
+            "finalization_allowed": not needs_review and academic.metadata.get("finalization_allowed", False),
+            "needs_human_review": needs_review,
+            "blocking_review_items": [i.to_dict() for i in review_queue.blocking_items()]}
+        if academic.run_dir:
+            from src.core.storage import read_json
+            write_json(request.project.directory / "runs" / academic.run_id / "review_queue.json", review_queue.to_list(), root=request.project.directory, overwrite=True)
+            summary_path = request.project.directory / "runs" / academic.run_id / "run_summary.json"
+            summary = read_json(summary_path)
+            summary.update(metadata, stages=stages)
+            write_json(summary_path, summary, root=request.project.directory, overwrite=True)
+            if metadata.get("quantitative_review"):
+                update_workflow_report(metadata["quantitative_review"], summary)
+
         return DeepResearchResponse(
             success=academic.success and not has_critical,
             error_message=academic.error_message,
@@ -501,4 +612,6 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
             evidence_count=len(evidence_list),
             citation_audit_passed=citation_passed,
             fact_audit_passed=fact_passed,
+            run_id=academic.run_id, run_dir=academic.run_dir,
+            metadata=metadata,
         )

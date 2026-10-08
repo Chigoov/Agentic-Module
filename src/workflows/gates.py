@@ -25,6 +25,7 @@ Status flags on the input JSON are *not* evidence. What the gate trusts:
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from src.core.errors import HumanReviewRequired
@@ -37,6 +38,7 @@ from src.schemas.evidence import (
     SUPPORTING_RELATIONSHIPS,
 )
 from src.schemas.source import RetrievalStatus, Source, is_verified
+from src.tools.source_content import inspect_source, recheck_quote, stored_metadata
 from src.tools.citation_manager import (
     detect_internal_tokens,
     detect_orphan_author_year_citations,
@@ -70,6 +72,7 @@ def check_academic_integrity(
     claims: list[Claim],
     evidence: list[Evidence],
     sources: list[Source],
+    root: Path | None = None,
 ) -> GateResult:
     """Validate referential integrity and evidence quality before writing.
     Checks (each maps to an audit finding):
@@ -130,7 +133,7 @@ def check_academic_integrity(
         source = source_by_id.get(source_id)
         if source is None:
             continue  # already reported as a missing reference
-        if not is_verified(source.state):
+        if not is_verified(source.state) or not stored_metadata(source):
             result.violations.append(
                 f"source {source_id} cited but never verified (state={source.state})"
             )
@@ -157,11 +160,21 @@ def check_academic_integrity(
                 f"conflicted claim {claim.id} carries no disclosure: "
                 "add a qualifier or attach the contradicting evidence"
             )
-    # -- 6. Verbatim quotes must come from a verified source.
+    # Source reading labels are claims that require an examination artifact.
+    for source_id in sorted(cited_source_ids):
+        source = source_by_id.get(source_id)
+        if source and source.reading_depth == ReadingDepth.FULL_TEXT:
+            proof = inspect_source(source, root)
+            if not proof["fully_read"]:
+                result.review_reasons.append(f"source {source_id} FULL_TEXT lacks validated retrieval/examination proof")
+
+    # -- 6. Recompute all verbatim quotes, including ordinary claims.
     for item in evidence:
         if not item.verbatim:
             continue
         source = source_by_id.get(item.source_id)
+        if source is not None and not recheck_quote(source, item, root):
+            result.violations.append(f"verbatim evidence {item.id} quote is not found in the located source snapshot")
         if source is not None and not is_verified(source.state):
             result.violations.append(
                 f"verbatim quote in evidence {item.id} cites unverified source {item.source_id}"
@@ -209,6 +222,8 @@ def check_academic_integrity(
             supporting_items = [e for e in evidence if e.id in claim.supporting_evidence]
             if supporting_items and all(
                 e.reading_depth == ReadingDepth.ABSTRACT_ONLY for e in supporting_items
+            ) and not all(
+                (source := source_by_id.get(e.source_id)) is not None and inspect_source(source, root)["fully_read"] for e in supporting_items
             ):
                 result.review_reasons.append(
                     f"claim {claim.id} supported only by abstract-level evidence"
@@ -332,3 +347,73 @@ def scan_output_text(
     if orphans:
         violations.append(f"author-year citations with no matching source: {orphans}")
     return violations
+
+
+def check_document_quality(draft: str, project, reference_list=None, sources=None) -> dict:
+    """Only complete literature reviews require the full review topology."""
+    aliases = {
+        "pendahuluan": ("pendahuluan", "introduction"),
+        "metode": ("metode", "methods", "methodology"),
+        "hasil/pembahasan": ("hasil", "pembahasan", "results", "discussion", "hasil dan pembahasan"),
+        "keterbatasan": ("keterbatasan", "limitations"),
+        "kesimpulan": ("kesimpulan", "conclusion"),
+        "referensi": ("referensi", "references", "daftar pustaka"),
+    }
+    sections = {}
+    parents = []
+    for line in draft.splitlines():
+        heading = re.match(r"^(#{2,6})\s+(.+)", line.strip())
+        if heading:
+            level, name = len(heading[1]), heading[2].strip().casefold()
+            while parents and parents[-1][0] >= level:
+                parents.pop()
+            parents.append((level, name))
+            sections.setdefault(name, [])
+        elif line.strip():
+            for _, name in parents:
+                sections[name].append(line.strip())
+    findings = [f"empty section: {name}" for name, content in sections.items() if not content]
+    if not draft.strip():
+        findings.append("draft is empty")
+    required = project.required_sections or (list(aliases) if project.output_type == "literature_review" else [])
+    for name in required:
+        choices = aliases.get(name.casefold(), (name.casefold(),))
+        if not any(sections.get(choice) for choice in choices):
+            findings.append(f"required section missing or empty: {name}")
+    if reference_list:
+        reference_text = "\n".join(line for name, lines in sections.items() if name in aliases["referensi"] for line in lines)
+        for entry in reference_list.entries:
+            if reference_text and entry.formatted not in reference_text:
+                findings.append(f"reference list/draft mismatch: {entry.source_id}")
+        allowed_lines = {entry.formatted for entry in reference_list.entries}
+        allowed_lines.update(entry.formatted + " [sumber belum lengkap]" for entry in reference_list.entries)
+        for line in reference_text.splitlines():
+            if line.removeprefix("- ") not in allowed_lines:
+                findings.append("draft contains a reference absent from the structured reference list")
+    reconciliation = None
+    if sources is not None and reference_list is not None:
+        from src.tools.citation_manager import reconcile_references
+        reconciliation = reconcile_references(draft, reference_list, sources)
+        findings.extend(reconciliation["findings"])
+        for source in sources:
+            if source.id not in reconciliation["cited_source_ids"]:
+                continue
+            if not is_verified(source.state) or not stored_metadata(source):
+                findings.append(f"cited source metadata needs re-verification: {source.id}")
+            if source.reading_depth == ReadingDepth.FULL_TEXT and not inspect_source(source, project.directory)["fully_read"]:
+                findings.append(f"cited FULL_TEXT source lacks examination proof: {source.id}")
+    if project.research_options.get("require_free_full_text"):
+        used = [s for s in (sources or []) if reconciliation and s.id in reconciliation["cited_source_ids"]]
+        if not used:
+            findings.append("no cited source satisfies the project free full-text access policy")
+        for source in used:
+            proof = inspect_source(source, project.directory)
+            if not proof["legal_free"] or not proof["scientific_eligible"]:
+                findings.append(f"cited source fails scientific/free full-text eligibility: {source.id}")
+            if source.metadata.get("version") not in {"version_of_record", "published_version", "accepted_manuscript", "preprint"}:
+                findings.append(f"included manuscript version requires verification: {source.id}")
+        for heading in ("metode", "keterbatasan"):
+            content = "\n".join(line for name in aliases[heading] for line in sections.get(name, []))
+            if not any(marker in content.casefold() for marker in ("gratis", "free access", "open access")):
+                findings.append("method/limitations must disclose the free full-text access restriction")
+    return {"passed": bool(draft.strip()) and not findings, "findings": findings, "output_type": project.output_type, "references": reconciliation}

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from conftest import fixture_source
 from pathlib import Path
 import zipfile
 
@@ -75,6 +76,7 @@ def _valid_bundle() -> tuple[Claim, Evidence, Source, Outline]:
         title="Bundle Test Outline",
         sections=[OutlineSection(title="Introduction", claim_ids=[claim.id])],
     )
+    fixture_source(source, evidence.evidence_text)
     return claim, evidence, source, outline
 
 
