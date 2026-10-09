@@ -51,6 +51,7 @@ _RUN_SNAPSHOT_FILES = (
     "workflow_options.json",
     "semantic_reviews.json",
     "access_screening.json",
+    "claim_screening.json",
     "search_log.json",
     "verification_reports.json",
     "review_queue.json",

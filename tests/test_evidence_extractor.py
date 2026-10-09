@@ -3,24 +3,29 @@
 from __future__ import annotations
 
 from src.schemas.evidence import (
+    EvidenceLocation,
     EvidenceRelationship,
     EvidenceStrength,
     ExtractionMethod,
 )
 from src.schemas.source import Source
 from src.tools.evidence_extractor import EvidenceExtractor
+from conftest import fixture_source
+from pathlib import Path
 
 
 def _source() -> Source:
     return Source(title="Example Paper")
 
 
-def test_extract_verbatim_found() -> None:
+def test_extract_verbatim_found(tmp_path) -> None:
     source = _source()
     haystack = "The first sentence. The method improved accuracy by 20 percent. Conclusion."
     passage = "The method improved accuracy by 20 percent."
+    fixture_source(source, haystack, tmp_path)
+    haystack = Path(source.retrieval_path).read_text(encoding="utf-8")
     result = EvidenceExtractor().extract_verbatim(
-        passage=passage, haystack=haystack, claim_id="clm_1", source=source
+        passage=passage, haystack=haystack, claim_id="clm_1", source=source, location=EvidenceLocation(section="Methods")
     )
     assert result.found is True
     assert result.evidence is not None

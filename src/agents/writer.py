@@ -107,6 +107,10 @@ class WriterAgent(BaseAgent[WriterRequest, WriterResponse]):
             return CitationStyle.APA7
 
     def _execute(self, request: WriterRequest) -> WriterResponse:
+        from src.workflows.gates import check_input_references
+        relations = check_input_references(claims=request.claims, evidence=request.evidence, sources=request.sources, outline=request.outline)
+        if not relations.ok:
+            return WriterResponse(success=False, needs_human_review=True, error_message="; ".join(relations.violations))
         writable = [c for c in request.claims if c.is_writable]
         excluded = [c.id for c in request.claims if not c.is_writable]
 

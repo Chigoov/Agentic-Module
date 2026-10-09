@@ -12,6 +12,7 @@ audit can confirm that every claim in the outline is actually supported.
 from __future__ import annotations
 
 from enum import StrEnum
+import re
 
 from pydantic import Field, model_validator
 
@@ -19,6 +20,21 @@ from src.core.errors import StateTransitionError
 from src.schemas.base import BaseRecord
 
 __all__ = ["OutlineStatus", "OutlineSection", "Outline"]
+
+SECTION_ALIASES = {
+    "pendahuluan": ("pendahuluan", "introduction"),
+    "metode": ("metode", "methods", "methodology", "metode penelusuran literatur", "metode penelitian", "literature search methods"),
+    "hasil/pembahasan": ("hasil/pembahasan", "hasil", "pembahasan", "results", "discussion", "hasil dan pembahasan", "results and discussion"),
+    "keterbatasan": ("keterbatasan", "limitations", "keterbatasan literatur", "keterbatasan penelitian", "literature limitations"),
+    "kesimpulan": ("kesimpulan", "conclusion", "conclusions"),
+    "referensi": ("referensi", "references", "daftar pustaka", "bibliography"),
+}
+
+
+def canonical_section(title: str) -> str:
+    """Exact supported outline aliases; unrelated headings do not fill a role."""
+    name = " ".join(re.sub(r"^\d+(?:\.\d+)*[.)]?\s+", "", title.strip()).casefold().rstrip(":").split())
+    return next((role for role, names in SECTION_ALIASES.items() if name in names), name)
 
 
 class OutlineStatus(StrEnum):

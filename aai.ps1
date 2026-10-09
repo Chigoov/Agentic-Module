@@ -35,9 +35,9 @@ function Show-Help {
     Write-Host "Contoh Cepat:" -ForegroundColor Green
     Write-Host "  .\aai.bat check"
     Write-Host "  .\aai.bat open"
-    Write-Host "  .\aai.bat run input_edjust_mini.json"
-    Write-Host "  .\aai.bat runs input_edjust_mini.json"
-    Write-Host "  .\aai.bat bundle input_edjust_mini.json"
+    Write-Host "  .\aai.bat run skills/autonomi-agentic-ilmiah/references/input-synthetic.json"
+    Write-Host "  .\aai.bat runs skills/autonomi-agentic-ilmiah/references/input-synthetic.json"
+    Write-Host "  .\aai.bat bundle skills/autonomi-agentic-ilmiah/references/input-synthetic.json"
     Write-Host ""
 }
 
@@ -70,7 +70,7 @@ function Resolve-JsonFile([string]$fileArg, [string]$actionName) {
         Write-Host "[ERROR] Perintah '$actionName' memerlukan argumen file <input.json>." -ForegroundColor Red
         Write-Host ""
         Write-Host "Contoh penggunaan:" -ForegroundColor Yellow
-        Write-Host "  .\aai.bat $actionName input_edjust_mini.json" -ForegroundColor Yellow
+        Write-Host "  .\aai.bat $actionName skills/autonomi-agentic-ilmiah/references/input-synthetic.json" -ForegroundColor Yellow
         exit 1
     }
 
@@ -86,7 +86,7 @@ function Resolve-JsonFile([string]$fileArg, [string]$actionName) {
         Write-Host "[ERROR] File input JSON tidak ditemukan: '$fileArg'" -ForegroundColor Red
         Write-Host ""
         Write-Host "Contoh penggunaan:" -ForegroundColor Yellow
-        Write-Host "  .\aai.bat $actionName input_edjust_mini.json" -ForegroundColor Yellow
+        Write-Host "  .\aai.bat $actionName skills/autonomi-agentic-ilmiah/references/input-synthetic.json" -ForegroundColor Yellow
         exit 1
     }
 

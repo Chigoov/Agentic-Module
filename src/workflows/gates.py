@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 
 from src.core.errors import HumanReviewRequired
 from src.schemas.claim import Claim
+from src.schemas.outline import SECTION_ALIASES, canonical_section
 from src.schemas.evidence import (
     Evidence,
     EvidenceRelationship,
@@ -67,12 +68,47 @@ class AcademicGateError(HumanReviewRequired):
     Raised as :class:`HumanReviewRequired` so CLI/API surface a structured
     review request instead of a bare failure.
     """
+def check_input_references(*, claims, evidence, sources, outline=None) -> GateResult:
+    """Check the original corpus before access/scientific screening can hide IDs."""
+    result = GateResult()
+    source_ids, claim_ids = {s.id for s in sources}, {c.id for c in claims}
+    by_evidence = {e.id: e for e in evidence}
+    for label, records in (("source", sources), ("claim", claims), ("evidence", evidence)):
+        if len(records) != len({r.id for r in records}):
+            result.violations.append(f"duplicate {label} IDs in payload")
+    for claim in claims:
+        for eid in claim.supporting_evidence + claim.contradicting_evidence:
+            item = by_evidence.get(eid)
+            if item is None:
+                kind = "supporting" if eid in claim.supporting_evidence else "contradicting"
+                result.violations.append(f"claim {claim.id} references nonexistent {kind} evidence {eid}")
+            elif item.claim_id != claim.id:
+                result.violations.append(f"claim {claim.id}/evidence {eid} claim_id mismatch")
+        for sid in claim.supporting_sources:
+            if sid not in source_ids:
+                result.violations.append(f"claim {claim.id} references nonexistent source {sid}")
+    for item in evidence:
+        if item.claim_id not in claim_ids:
+            result.violations.append(f"evidence {item.id} references nonexistent claim {item.claim_id}")
+        if item.source_id not in source_ids:
+            result.violations.append(f"evidence {item.id} references nonexistent source {item.source_id}")
+    if outline:
+        def visit(sections):
+            for section in sections:
+                for cid in section.claim_ids:
+                    if cid not in claim_ids:
+                        result.violations.append(f"outline section {section.title!r} references nonexistent claim {cid}")
+                visit(section.subsections)
+        visit(outline.sections)
+    return result
+
 def check_academic_integrity(
     *,
     claims: list[Claim],
     evidence: list[Evidence],
     sources: list[Source],
     root: Path | None = None,
+    outline=None,
 ) -> GateResult:
     """Validate referential integrity and evidence quality before writing.
     Checks (each maps to an audit finding):
@@ -88,41 +124,12 @@ def check_academic_integrity(
     6. A verbatim quotation must be traceable: its source must be verified
        (A01/A02: a quote flag alone is not proof).
     """
-    result = GateResult()
+    result = check_input_references(claims=claims, evidence=evidence, sources=sources, outline=outline)
+    if outline:
+        for claim in claims:
+            if claim.id in outline.claim_ids and not claim.is_writable:
+                result.review_reasons.append(f"outline requires non-writable claim {claim.id}; revise the claim or outline explicitly")
     source_by_id = {source.id: source for source in sources}
-    claim_by_id = {claim.id: claim for claim in claims}
-    evidence_ids = [evidence.id for evidence in evidence]
-    # -- 1. Referential integrity: evidence IDs referenced by claims must exist.
-    for claim in claims:
-        for evidence_id in claim.supporting_evidence:
-            if evidence_id not in evidence_ids:
-                result.violations.append(
-                    f"claim {claim.id} references nonexistent supporting evidence {evidence_id}"
-                )
-        for evidence_id in claim.contradicting_evidence:
-            if evidence_id not in evidence_ids:
-                result.violations.append(
-                    f"claim {claim.id} references nonexistent contradicting evidence {evidence_id}"
-                )
-        for source_id in claim.supporting_sources:
-            if source_id not in source_by_id:
-                result.violations.append(
-                    f"claim {claim.id} references nonexistent source {source_id}"
-                )
-    # Duplicate evidence IDs are ambiguous bookkeeping and rejected outright.
-    if len(evidence_ids) != len(set(evidence_ids)):
-        result.violations.append("duplicate evidence IDs in payload")
-    # -- 2. Evidence -> claim/source references must resolve.
-    for item in evidence:
-        if item.claim_id not in claim_by_id:
-            result.violations.append(
-                f"evidence {item.id} references nonexistent claim {item.claim_id}"
-            )
-            continue
-        if item.source_id not in source_by_id:
-            result.violations.append(
-                f"evidence {item.id} references nonexistent source {item.source_id}"
-            )
     # -- 3. Cited sources must be verified by the engine, not merely flagged.
     cited_source_ids: set[str] = set()
     for claim in claims:
@@ -351,37 +358,28 @@ def scan_output_text(
 
 def check_document_quality(draft: str, project, reference_list=None, sources=None) -> dict:
     """Only complete literature reviews require the full review topology."""
-    aliases = {
-        "pendahuluan": ("pendahuluan", "introduction"),
-        "metode": ("metode", "methods", "methodology"),
-        "hasil/pembahasan": ("hasil", "pembahasan", "results", "discussion", "hasil dan pembahasan"),
-        "keterbatasan": ("keterbatasan", "limitations"),
-        "kesimpulan": ("kesimpulan", "conclusion"),
-        "referensi": ("referensi", "references", "daftar pustaka"),
-    }
-    sections = {}
+    sections = []
     parents = []
     for line in draft.splitlines():
         heading = re.match(r"^(#{2,6})\s+(.+)", line.strip())
         if heading:
-            level, name = len(heading[1]), heading[2].strip().casefold()
+            level, name = len(heading[1]), canonical_section(heading[2])
             while parents and parents[-1][0] >= level:
                 parents.pop()
-            parents.append((level, name))
-            sections.setdefault(name, [])
+            parents.append((level, len(sections)))
+            sections.append((name, []))
         elif line.strip():
-            for _, name in parents:
-                sections[name].append(line.strip())
-    findings = [f"empty section: {name}" for name, content in sections.items() if not content]
+            for _, index in parents:
+                sections[index][1].append(line.strip())
+    findings = [f"empty section: {name}" for name, content in sections if not content]
     if not draft.strip():
         findings.append("draft is empty")
-    required = project.required_sections or (list(aliases) if project.output_type == "literature_review" else [])
+    required = project.required_sections or (list(SECTION_ALIASES) if project.output_type == "literature_review" else [])
     for name in required:
-        choices = aliases.get(name.casefold(), (name.casefold(),))
-        if not any(sections.get(choice) for choice in choices):
+        if not any(role == canonical_section(name) and content for role, content in sections):
             findings.append(f"required section missing or empty: {name}")
     if reference_list:
-        reference_text = "\n".join(line for name, lines in sections.items() if name in aliases["referensi"] for line in lines)
+        reference_text = "\n".join(line for name, lines in sections if name == "referensi" for line in lines)
         for entry in reference_list.entries:
             if reference_text and entry.formatted not in reference_text:
                 findings.append(f"reference list/draft mismatch: {entry.source_id}")
@@ -413,7 +411,7 @@ def check_document_quality(draft: str, project, reference_list=None, sources=Non
             if source.metadata.get("version") not in {"version_of_record", "published_version", "accepted_manuscript", "preprint"}:
                 findings.append(f"included manuscript version requires verification: {source.id}")
         for heading in ("metode", "keterbatasan"):
-            content = "\n".join(line for name in aliases[heading] for line in sections.get(name, []))
+            content = "\n".join(line for name, lines in sections if name == heading for line in lines)
             if not any(marker in content.casefold() for marker in ("gratis", "free access", "open access")):
                 findings.append("method/limitations must disclose the free full-text access restriction")
     return {"passed": bool(draft.strip()) and not findings, "findings": findings, "output_type": project.output_type, "references": reconciliation}

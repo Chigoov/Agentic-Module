@@ -22,7 +22,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.cell_range import CellRange
 
 from src.schemas.source import Source, is_verified
-from src.tools.source_content import inspect_record, inspect_source, stored_metadata, record_source
+from src.tools.source_content import inspect_record, inspect_source, stored_metadata, record_source, located_excerpt
 from src.tools.source_mapper import normalize_doi, normalize_title
 
 __all__ = [
@@ -474,7 +474,7 @@ def _verified_score(record, weights):
     assessment = record.get("assessment") or {}
     proof = inspect_record(record)
     source = record_source(record)
-    if not source or not stored_metadata(source) or not proof.get("scientific_eligible") or not isinstance(assessment, dict) or assessment.get("artifact_sha256") != proof.get("sha256") or not assessment.get("reviewer") or not assessment.get("reviewed_at"):
+    if not source or not stored_metadata(source) or not proof.get("scientific_eligible") or not proof.get("fully_read") or not isinstance(assessment, dict) or assessment.get("source_id") != source.id or assessment.get("artifact_sha256") != proof.get("sha256") or not assessment.get("reviewer") or not assessment.get("reviewed_at"):
         return None
     criteria = assessment.get("criteria", [])
     if len(criteria) != len(weights) or {c.get("pillar") for c in criteria} != set(weights):
@@ -482,7 +482,12 @@ def _verified_score(record, weights):
     total = 0
     for c in criteria:
         score = c.get("score")
-        if not isinstance(score, (int, float)) or isinstance(score, bool) or not 0 <= score <= weights[c["pillar"]] or not c.get("locator") or not c.get("evidence_excerpt") or " ".join(c["evidence_excerpt"].split()) not in " ".join(proof["text"].split()):
+        if not isinstance(score, (int, float)) or isinstance(score, bool) or not 0 <= score <= weights[c["pillar"]]:
+            return None
+        try:
+            located_excerpt(c, proof["text"], proof.get("pages", []))
+        except (ValueError, TypeError, AttributeError) as exc:
+            record.setdefault("verification_findings", []).append(f"assessment location requires verification: {exc}")
             return None
         total += score
     provided = record.get("total_score", record.get("score"))
@@ -748,7 +753,7 @@ def update_workflow_report(result: dict, run_summary: dict) -> None:
     _write_report(report, payload, created_at=run_summary["finished_at"], runtime_status="processed" if run_summary["execution_success"] else "failed")
     with report.open("a", encoding="utf-8") as handle:
         handle.write("\n## Status keseluruhan workflow\n```json\n" + json.dumps({
-            key: run_summary.get(key) for key in ("run_id", "execution_success", "result_status", "finalization_allowed", "needs_human_review", "document_quality", "citation_audit_passed", "fact_audit_passed", "human_style_audit_passed", "review_findings", "blocking_review_items", "references")
+            key: run_summary.get(key) for key in ("run_id", "execution_success", "result_status", "finalization_allowed", "needs_human_review", "document_quality", "citation_audit_passed", "fact_audit_passed", "human_style_audit_passed", "review_findings", "blocking_review_items", "references", "input_integrity", "resolved_input_integrity", "claim_screening")
         }, ensure_ascii=False, indent=2) + "\n```\n")
     manifest_path = Path(result["manifest_path"])
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

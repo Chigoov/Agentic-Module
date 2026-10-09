@@ -6,7 +6,7 @@ import io
 from pathlib import Path
 
 import pytest
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 from src.schemas.evidence import EvidenceLocation
 from src.tools.evidence_extractor import EvidenceExtractor
@@ -111,3 +111,15 @@ def test_empty_bytes_fails_gracefully() -> None:
     result = tool.parse(b"")
     assert result.success is False
     assert "empty" in (result.error_message or "").lower()
+
+
+def test_blank_page_preserves_following_page_offsets(text_pdf_path):
+    writer = PdfWriter()
+    writer.add_blank_page(width=300, height=300)
+    for page in PdfReader(text_pdf_path).pages:
+        writer.add_page(page)
+    stream = io.BytesIO(); writer.write(stream)
+    result = PDFParserTool().parse(stream.getvalue())
+    assert result.success and result.total_pages == 3
+    for page in result.pages:
+        assert result.full_text[page.char_start:page.char_end] == page.text

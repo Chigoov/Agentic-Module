@@ -157,6 +157,60 @@ load();setInterval(load,2000);
 
 
 INDEX = Path(__file__).with_name("static").joinpath("office.html").read_text(encoding="utf-8")
+HOME_INDEX = INDEX.replace('data-view="research"', 'data-view="home"')
+
+
+def _jobs() -> dict[str, Any]:
+    """Home overview of workspace jobs, preserving terminal outcomes."""
+    jobs: dict[str, dict[str, Any]] = {}
+    ignored = set()
+    paths = get_paths()
+    for event in read_progress(limit=None):
+        job_id = event.get("job_id")
+        if not isinstance(job_id, str) or not job_id or job_id in ignored:
+            continue
+        if job_id not in jobs:
+            path = event.get("project_path")
+            if not path:
+                continue
+            project_path = Path(path)
+            if not paths.is_inside_workspace(project_path) or paths.is_inside_system_root(project_path):
+                ignored.add(job_id)
+                continue
+            relative_parts = project_path.resolve().relative_to(paths.workspace_root.resolve()).parts
+            if any(part.startswith("pytest-") or part == "pytest-temp" for part in relative_parts):
+                ignored.add(job_id)
+                continue
+            try:
+                manifest = json.loads((project_path / "project.json").read_text(encoding="utf-8"))
+                origin = Path(manifest.get("origin_project_path") or "")
+            except (OSError, ValueError, TypeError):
+                origin = Path()
+            if any(part.startswith("pytest-") for part in origin.parts):
+                ignored.add(job_id)
+                continue
+            jobs[job_id] = {"job_id": job_id, "title": event.get("project_name") or project_path.name,
+                "status": "idle", "time": event.get("time"), "agents": {}, "latest": event, "root": None}
+        job = jobs[job_id]
+        job["time"] = event.get("time")
+        job["latest"] = event
+        if event.get("event_kind") == "job":
+            job["status"] = event.get("status", "idle")
+            job["root"] = event
+        elif job["root"] is None:
+            job["status"] = event.get("status", "idle")
+        if event.get("event_kind") in {"job", "agent"} and event.get("agent_id"):
+            job["agents"][event["agent_id"]] = event
+    recent = sorted(jobs.values(), key=lambda job: job["time"] or "", reverse=True)
+    counts = {"running": 0, "review": 0, "agents": 0}
+    for job in recent:
+        job["agents"] = list(job["agents"].values())
+        if job["status"] in {"running", "started"}:
+            counts["running"] += 1
+            counts["agents"] += sum(agent.get("status") in {"running", "started"} for agent in job["agents"])
+        elif job["status"] in {"partial", "pending", "blocked"}:
+            counts["review"] += 1
+    return {"success": True, "counts": counts, "jobs": recent[:20]}
 
 
 def _json(payload: Any) -> str:
@@ -258,15 +312,21 @@ class MonitorHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         if parsed.path == "/":
+            self._send(200, INDEX if "job_id" in parse_qs(parsed.query) else HOME_INDEX, "text/html; charset=utf-8")
+        elif parsed.path == "/beranda":
+            self._send(200, HOME_INDEX, "text/html; charset=utf-8")
+        elif parsed.path == "/riset":
             self._send(200, INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/workflow":
             self._send(200, LEGACY_INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/api/progress":
             query = parse_qs(parsed.query)
             self._json(200, {"success": True, "events": read_progress(limit=1000, job_id=query.get("job_id", [None])[0])})
-        elif parsed.path in {"/assets/research-office.jpg", "/assets/research-team.webp", "/assets/office.js"}:
+        elif parsed.path == "/api/jobs":
+            self._json(200, _jobs())
+        elif parsed.path in {"/assets/research-office.jpg", "/assets/research-team.webp", "/assets/research-team-v3.png", "/assets/research-team-chibi-v4.png", "/assets/office.js"}:
             asset = Path(__file__).with_name("static") / Path(parsed.path).name
-            content_type = {".jpg": "image/jpeg", ".webp": "image/webp", ".js": "text/javascript; charset=utf-8"}[asset.suffix]
+            content_type = {".jpg": "image/jpeg", ".webp": "image/webp", ".png": "image/png", ".js": "text/javascript; charset=utf-8"}[asset.suffix]
             self._send(200, asset.read_bytes(), content_type)
         elif parsed.path == "/api/check":
             record_progress("check", "running", message="Health check started")

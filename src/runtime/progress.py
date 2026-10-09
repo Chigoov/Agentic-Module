@@ -50,7 +50,7 @@ def record_progress(stage: str, status: str, *, message: str = "", **extra: Any)
         )
 
 
-def read_progress(root: str | Path | None = None, *, limit: int = 100, job_id: str | None = None) -> list[dict[str, Any]]:
+def read_progress(root: str | Path | None = None, *, limit: int | None = 100, job_id: str | None = None) -> list[dict[str, Any]]:
     path = progress_file(root)
     if not path.is_file():
         return []
@@ -68,4 +68,4 @@ def read_progress(root: str | Path | None = None, *, limit: int = 100, job_id: s
             raise
         if job_id is None or event.get("job_id") == job_id:
             events.append(event)
-    return events[-limit:]
+    return events[-limit:] if limit is not None else events

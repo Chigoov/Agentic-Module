@@ -56,14 +56,21 @@ class _TextExtractor(HTMLParser):
         super().__init__()
         self.parts: list[str] = []
         self._ignored = 0
+        self.primary_titles: list[str] = []
+        self._title_parts = None
 
     def handle_starttag(self, tag: str, attrs) -> None:
         if tag in {"script", "style"}:
             self._ignored += 1
         elif tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "section", "article", "br"}:
             self.parts.append("\n")
+            if tag == "h1":
+                self._title_parts = []
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "h1" and self._title_parts is not None:
+            self.primary_titles.append(" ".join(self._title_parts))
+            self._title_parts = None
         if tag in {"script", "style"}:
             self._ignored = max(0, self._ignored - 1)
         elif tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "section", "article"}:
@@ -73,6 +80,8 @@ class _TextExtractor(HTMLParser):
         text = data.strip()
         if text and not self._ignored:
             self.parts.append(text)
+            if self._title_parts is not None:
+                self._title_parts.append(text)
 
     def text(self) -> str:
         return "\n".join(" ".join(line.split()) for line in " ".join(self.parts).splitlines() if line.strip())
@@ -228,7 +237,8 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             source.metadata["title"] = source.title
             source.metadata["download_url"] = source.url or (source.download_urls[0] if source.download_urls else None)
         source.retrieval_status = RetrievalStatus.RETRIEVED
-        if method != "abstract" and source.state not in {SourceState.FULLTEXT_RETRIEVED, SourceState.APPROVED}:
+        content_verified = self._check_article_content(request) if method != "abstract" else True
+        if method != "abstract" and content_verified and source.state not in {SourceState.FULLTEXT_RETRIEVED, SourceState.APPROVED}:
             source.transition_to(
                 SourceState.FULLTEXT_RETRIEVED,
                 reason=f"Retrieved source content via {method}",
@@ -240,7 +250,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             document_path=str(path),
             parsed_text=parsed_text,
             retrieval_method=method,
-            metadata={"content_parsed": parsed_text is not None},
+            metadata={"content_parsed": parsed_text is not None, "source_content": source.metadata.get("content_verification")},
         )
 
     def _refuse_download(
@@ -438,7 +448,8 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             source.metadata["download_url"] = target_url
         source.retrieval_path = str(path)
         source.retrieval_status = RetrievalStatus.RETRIEVED
-        if source.state not in {SourceState.FULLTEXT_RETRIEVED, SourceState.APPROVED}:
+        content_verified = self._check_article_content(request)
+        if content_verified and source.state not in {SourceState.FULLTEXT_RETRIEVED, SourceState.APPROVED}:
             source.transition_to(
                 SourceState.FULLTEXT_RETRIEVED,
                 reason="Retrieved full-text via direct_download",
@@ -452,9 +463,23 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             retrieval_method="direct_download",
             metadata={
                 "content_parsed": parsed_text is not None,
+                "source_content": source.metadata.get("content_verification"),
                 **retrieval_meta,
             },
         )
+
+    @staticmethod
+    def _check_article_content(request):
+        if request.source.source_type in {SourceType.BOOK, SourceType.BOOK_CHAPTER, SourceType.WEB_RESOURCE}:
+            return True  # Article topology does not establish completeness of books.
+        from src.tools.source_content import inspect_source
+        proof = inspect_source(request.source, request.project.directory)
+        request.source.metadata["content_verification"] = {k:v for k,v in proof.items() if k not in {"text", "pages"}}
+        if not proof["full_text"]:
+            request.source.retrieval_status = RetrievalStatus.PARTIAL
+            if request.source.state != SourceState.NEEDS_HUMAN_REVIEW:
+                request.source.request_review(reason="; ".join(proof["findings"]))
+        return proof["full_text"]
 
     @staticmethod
     def _fetch_url(url: str, timeout_seconds: int) -> RetrievedPayload:

@@ -1,0 +1,31 @@
+{
+  "project": {
+    "name": "synthetic-contract-example",
+    "workspace": "TUGAS 1",
+    "path": "../TUGAS 1/synthetic-contract-example",
+    "title": "SYNTHETIC TEST ONLY - contoh kontrak calon sumber",
+    "citation_style": "APA7",
+    "language": "id",
+    "output_type": "search_report",
+    "required_sections": ["Catatan Penelusuran"],
+    "research_options": {"require_free_full_text": true}
+  },
+  "sources": [{
+    "id": "src_synthetic_candidate",
+    "title": "SYNTHETIC TEST ONLY - calon sumber, bukan artikel penelitian",
+    "state": "DISCOVERED",
+    "source_type": "JOURNAL_ARTICLE",
+    "metadata": {"data_status": "SYNTHETIC TEST ONLY; no real provider verification"}
+  }],
+  "claims": [],
+  "evidence": [],
+  "outline": {
+    "title": "SYNTHETIC TEST ONLY - laporan sementara",
+    "sections": [{"title": "Catatan Penelusuran", "summary": "SYNTHETIC TEST ONLY: kandidat belum diverifikasi; belum ada hasil penelitian.", "claim_ids": []}]
+  },
+  "semantic_reviews": [],
+  "generate_docx": false,
+  "quantitative_review": true,
+  "require_free_full_text": true,
+  "quantitative_review_request": "Simpan korpus; 40 artikel adalah target awal, bukan batas maksimum."
+}

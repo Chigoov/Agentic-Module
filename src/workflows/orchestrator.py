@@ -76,7 +76,7 @@ class OrchestratorAgent(BaseAgent[OrchestratorRequest, OrchestratorResponse]):
             from src.core.storage import write_json
             write_json(request.project.directory / "verification_reports.json", reports, root=request.project.directory, overwrite=True)
         gate = check_academic_integrity(
-            claims=request.claims, evidence=request.evidence, sources=request.sources, root=request.project.directory
+            claims=request.claims, evidence=request.evidence, sources=request.sources, root=request.project.directory, outline=request.outline
         )
         gate.violations.extend(verification_failures)
         if not gate.ok:

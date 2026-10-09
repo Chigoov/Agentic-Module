@@ -84,7 +84,7 @@ def fixture_source(source, text=None, root=None, *, cache_report=False):
     if text is not None:
         source.abstract = text
     stamp = datetime.now(timezone.utc).isoformat()
-    content = (source.title + "\nMethods\n" + (source.abstract or "") + "\nResults\nFixture result.\nDiscussion\nFixture discussion.\nReferences\nFixture reference.").encode("utf-8")
+    content = (source.title + "\nAbstract\n" + (source.abstract or "") + "\nMethods\n" + (source.abstract or "") + "\nResults\nFixture result.\nDiscussion\nFixture discussion.\nReferences\nFixture reference.").encode("utf-8")
     path = root / (source.id + ".txt")
     path.write_bytes(content)
     digest = hashlib.sha256(content).hexdigest()

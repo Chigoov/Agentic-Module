@@ -125,7 +125,7 @@ class PDFParserTool:
                 # Next page starts after page separator
                 offset = char_end + 2
 
-            full_text = "\n\n".join(p.text for p in pages if p.text)
+            full_text = "\n\n".join(full_parts) if has_text else ""
 
             ocr_required = not has_text
             return PDFParseResult(

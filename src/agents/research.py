@@ -235,6 +235,10 @@ class RetrievalAgent(BaseAgent[RetrievalAgentRequest, RetrievalAgentResponse]):
                 continue
             direct_dl = getattr(source, "download_allowed", False)
             response = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=direct_dl))
+            content_proof = source.metadata.get("content_verification")
+            if response.success and response.retrieval_method != "abstract" and content_proof and not content_proof["full_text"]:
+                failed.append(source.id)
+                continue
             if response.success and response.parsed_text:
                 parsed[source.id] = response.parsed_text
             elif not response.success:
@@ -245,7 +249,7 @@ class RetrievalAgent(BaseAgent[RetrievalAgentRequest, RetrievalAgentResponse]):
                         parsed[source.id] = fallback_resp.parsed_text
                         continue
                 failed.append(source.id)
-        return RetrievalAgentResponse(sources=request.sources, parsed_text_by_source=parsed, failed=failed)
+        return RetrievalAgentResponse(sources=request.sources, parsed_text_by_source=parsed, failed=failed, needs_human_review=bool(failed))
 
 
 class EvidenceAgentRequest(AgentRequest):

@@ -115,11 +115,13 @@ class EvidenceExtractor:
             confidence=confidence,
             extraction_method=ExtractionMethod.VERBATIM_ABSTRACT if "abstract" in resolved_location.describe().casefold() or (source.abstract and _normalize(haystack) == _normalize(source.abstract)) else ExtractionMethod.VERBATIM_FULLTEXT,
             verbatim=True,
-            quote_verified=True,
+            quote_verified=False,
             extracted_by="evidence_extractor",
         )
-        # Re-verify via the schema's own check to keep a single source of truth.
-        evidence.mark_quote_verified(haystack=haystack, actor="evidence_extractor")
+        # Containment in caller text is extraction, not snapshot/location proof.
+        from src.tools.source_content import recheck_quote
+        if not recheck_quote(source, evidence):
+            evidence.notes = "Source snapshot/declared location requires verification; passage found only in caller text"
         return ExtractionResult(evidence=evidence, found=True)
 
     def record_paraphrase(

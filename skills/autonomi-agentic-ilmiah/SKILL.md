@@ -9,6 +9,13 @@ metadata:
 
 Protokol operasional ini memandu agen AI (Kiro IDE, Antigravity, Claude, Codex, GPT, atau model lainnya) untuk mengoperasikan repositori **AUTONOMI AGENTIC ILMIAH (AAI)** secara aman, deterministik, dan berintegritas akademik tinggi.
 
+**Baca [kontrak input bersama](references/input-json.md) sebelum menyusun payload.**
+Kontrak ini mencakup verification_artifact, retrieval/hash, examination,
+eligibility_review, assessment berlokasi, kebijakan akses proyek, workbook,
+quality gate, status hasil, resume, serta ekspor berdasarkan run_id.
+[Contoh sintetis](references/input-synthetic.json) valid menurut skema aktual,
+tetapi sengaja belum layak final dan bukan hasil provider/penelitian nyata.
+
 ---
 
 ## 1. Identitas & Pemicu Penggunaan Skill (Triggers)
@@ -100,14 +107,19 @@ Agen **DILARANG menyatakan tugas berhasil sebelum memeriksa berkas audit**:
    - Pastikan `"passed": true`.
    - Pastikan bebas dari penambahan bab tak diminta, frasa klise AI, dan tabel/spreadsheet yang terlalu rumit.
 4. Periksa keberadaan naskah final:
-   - Pastikan `final.docx` berhasil dibuat di direktori proyek.
+   - Baca metadata `execution_success`, `result_status`, `finalization_allowed`,
+     `needs_human_review`, serta `runs/<run_id>/run_summary.json` aktual.
+   - `final.docx` hanya dibuat jika audit, quality gate, workbook/scoring dan
+     review queue memenuhi finalisasi. PARTIAL dapat disimpan dan diekspor.
    - Periksa draf `draft.md` bebas dari segala token internal (`turn...`, `view...`, `search...`, `filecite`, atau `【...】`).
 
 ### Langkah 6: Tindakan Perbaikan jika Audit Gagal (Looping & Refinement)
 Jika audit gagal (`passed: false` atau muncul alasan penolakan pada `fact_audit.json`):
 * **DILARANG KERAS mengarang hasil, memalsukan persetujuan, atau mengubah draf manual secara sepihak.**
 * Agen wajib membaca `rejection_reasons` pada laporan audit, memperbaiki cacat pada berkas input JSON (misalnya: mencari kutipan verbatim yang sesuai di teks sumber asli, memperbaiki ketidaksesuaian ID rantai bukti, melengkapi parameter ulasan semantik yang hilang, atau menambahkan *qualifier* pada klaim yang terlalu kuat/overclaiming).
-* Jalankan ulang `.\aai.bat run input_project.json` hingga seluruh gerbang integritas akademik terpenuhi.
+* Revisi memakai project/path aktual dari response dan `--resume`, sehingga run
+  baru berada pada project yang sama. Periksa claim_screening dan revisi outline
+  bila dukungan hilang; jangan menghapus klaim penting agar audit tampak lulus.
 
 ---
 
@@ -133,7 +145,9 @@ Pengguna dan AI agent dapat menggunakan shortcut launcher `.\aai.bat` (atau `./a
    - Dilarang mengarang nama penulis, tahun terbit, nama jurnal, volume, nomor terbitan, maupun rentang halaman.
    - Dilarang mengarang atau menebak format DOI (seperti `10.9999/...`).
 2. **Status Sumber Tidak Boleh Dikarang:**
-   - Flag `"state": "APPROVED"` pada payload input tidak dipercaya sebagai bukti verifikasi; seluruh sumber diverifikasi ulang via `VerificationEngine` (Crossref/OpenAlex) sebelum dokumen final dapat dibuat.
+   - Flag `"state": "APPROVED"` tidak dipercaya sebagai bukti. Snapshot engine
+     boleh digunakan kembali bila identitas dan hash valid; pencarian internet
+     baru diperlukan ketika bukti tersimpan belum sah atau tidak tersedia.
 3. **Kewajiban Bukti Verbatim untuk Klaim Konsekuensial:**
    - Klaim kausal, statistik/numerik, efektivitas, arah, mekanisme, atau kata absolut tidak boleh hanya berlandaskan `MODEL_PARAPHRASE`. Wajib ada kutipan verbatim dari abstrak atau naskah lengkap sumber.
 4. **Pembersihan Token Internal AI:**

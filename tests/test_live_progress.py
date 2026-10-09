@@ -7,7 +7,7 @@ from urllib.request import urlopen
 
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
 from src.core.paths import ENV_SYSTEM_ROOT, reset_paths_cache
-from src.runtime.monitor import create_handler
+from src.runtime.monitor import create_handler, _jobs
 from src.runtime.progress import progress_context, progress_file, read_progress, record_progress
 
 
@@ -62,3 +62,28 @@ def test_monitor_filters_before_limit_and_ignores_unfinished_append(tmp_path, mo
                 assert response.read()
     finally:
         server.shutdown(); thread.join(timeout=5); server.server_close(); reset_paths_cache()
+
+
+def test_home_keeps_jobs_separate_and_does_not_count_finished_agents(tmp_path, monkeypatch):
+    (tmp_path / "DATA BASE").mkdir()
+    monkeypatch.setenv(ENV_SYSTEM_ROOT, str(tmp_path / "DATA BASE")); reset_paths_cache()
+    workspace = tmp_path / "TUGAS 1"
+    workspace.mkdir()
+    try:
+        for job, status in [("live", "running"), ("review", "partial"), ("finished", "completed")]:
+            path = str(workspace / job)
+            record_progress("academic", "running", job_id=job, project_path=path, event_kind="job", agent_id="coordinator")
+            record_progress("retrieval", "running", job_id=job, project_path=path, event_kind="agent", agent_id="reader")
+            if status != "running":
+                record_progress("academic", status, job_id=job, project_path=path, event_kind="job", agent_id="coordinator")
+        record_progress("other", "running", job_id="outside", project_path=str(tmp_path.parent / "outside"), event_kind="job")
+        fixture = workspace / "fixture"
+        fixture.mkdir()
+        (fixture / "project.json").write_text(json.dumps({"origin_project_path": str(tmp_path / "pytest-123" / "source")}), encoding="utf-8")
+        record_progress("academic", "running", job_id="fixture", project_path=str(fixture), event_kind="job")
+        result = _jobs()
+        assert result["counts"] == {"running": 1, "review": 1, "agents": 2}
+        assert {j["job_id"] for j in result["jobs"]} == {"live", "review", "finished"}
+        assert {j["job_id"]: j["status"] for j in result["jobs"]}["review"] == "partial"
+    finally:
+        reset_paths_cache()

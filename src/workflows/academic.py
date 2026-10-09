@@ -8,7 +8,7 @@ from pydantic import Field
 
 from src.agents.audit import HumanStyleAuditAgent, HumanStyleAuditRequest
 from src.agents.base import AgentRequest, AgentResponse, BaseAgent
-from src.schemas.claim import Claim, SemanticReview
+from src.schemas.claim import Claim, ClaimStatus, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project, ProjectArtifact
@@ -22,9 +22,10 @@ from src.tools.quantitative_review_workbook import (
 from src.runtime.execution import ensure_workflow_ready, resolve_source_paths
 from src.workflows.audit_trail import AcademicRunAudit
 from src.workflows.orchestrator import OrchestratorAgent, OrchestratorRequest
-from src.workflows.gates import check_document_quality
+from src.workflows.gates import check_document_quality, check_input_references
+from src.workflows.evidence_flow import evaluate_claim
 from src.core.storage import write_json
-from src.schemas.review import ReviewQueue
+from src.schemas.review import ReviewItem, ReviewQueue
 from src.tools.source_content import inspect_source
 
 __all__ = ["AcademicWritingRequest", "AcademicWritingResponse", "AcademicWritingWorkflow"]
@@ -108,15 +109,61 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
         orchestrated = None
         stages = []
         try:
+            original_integrity = check_input_references(claims=request.claims, evidence=request.evidence, sources=request.sources, outline=request.outline)
+            withdrawn_ids = {c.id for c in request.claims if c.status == ClaimStatus.WITHDRAWN
+                and any(h.to_state == "WITHDRAWN" and h.reason.strip() and h.actor for h in c.history)
+                and (not request.outline or c.id not in request.outline.claim_ids)}
+            active_integrity = check_input_references(claims=[c for c in request.claims if c.id not in withdrawn_ids],
+                evidence=[e for e in request.evidence if e.claim_id not in withdrawn_ids], sources=request.sources, outline=request.outline)
+            unresolved_integrity = list(dict.fromkeys(active_integrity.violations + [f for f in original_integrity.violations if f.startswith("duplicate ")]))
+            resolved_integrity = [f for f in original_integrity.violations if f not in unresolved_integrity]
             synthesis_sources = request.sources
+            source_proofs = {}
             if request.require_free_full_text:
-                synthesis_sources = [source for source in request.sources if (proof := inspect_source(source, request.project.directory))["legal_free"] and proof["scientific_eligible"]]
+                source_proofs = {s.id: inspect_source(s, request.project.directory) for s in request.sources}
+                synthesis_sources = [source for source in request.sources if source_proofs[source.id]["legal_free"] and source_proofs[source.id]["scientific_eligible"]]
                 write_json(audit.run_dir / "access_screening.json", [dict(source_id=source.id, included=source in synthesis_sources,
-                    version=source.metadata.get("version", "unverified"), proof={k:v for k,v in inspect_source(source, request.project.directory).items() if k not in {"text", "pages"}}) for source in request.sources], root=request.project.directory, overwrite=True)
+                    version=source.metadata.get("version", "unverified"), proof={k:v for k,v in source_proofs[source.id].items() if k not in {"text", "pages"}}) for source in request.sources], root=request.project.directory, overwrite=True)
             used_ids = {source.id for source in synthesis_sources}
             evidence = [e for e in request.evidence if e.source_id in used_ids]
             evidence_ids = {e.id for e in evidence}
-            claims = [c for c in request.claims if set(c.supporting_sources).issubset(used_ids) and set(c.supporting_evidence).issubset(evidence_ids)]
+            claims, claim_screening, screening_findings = [], [], list(unresolved_integrity)
+            for original in request.claims:
+                withdrawn = original.status == ClaimStatus.WITHDRAWN and any(h.to_state == "WITHDRAWN" and h.reason.strip() and h.actor for h in original.history)
+                if withdrawn:
+                    claim_screening.append(dict(claim_id=original.id, decision="recorded_withdrawal", history=[h.to_dict() for h in original.history], outline_affected=bool(request.outline and original.id in request.outline.claim_ids)))
+                    continue
+                claim = original.model_copy(deep=True)
+                lost_sources = [sid for sid in claim.supporting_sources if sid not in used_ids]
+                lost_evidence = [eid for eid in claim.supporting_evidence + claim.contradicting_evidence if eid not in evidence_ids]
+                if lost_sources or lost_evidence:
+                    claim.supporting_sources = [sid for sid in claim.supporting_sources if sid in used_ids]
+                    claim.supporting_evidence = [eid for eid in claim.supporting_evidence if eid in evidence_ids]
+                    claim.contradicting_evidence = [eid for eid in claim.contradicting_evidence if eid in evidence_ids]
+                    remaining = [e for e in evidence if e.claim_id == claim.id and e.id in claim.supporting_evidence + claim.contradicting_evidence]
+                    verdict = evaluate_claim(claim, remaining)
+                    if claim.status != verdict.status:
+                        claim.transition_to(verdict.status, reason="After source/evidence screening: " + verdict.reason, actor=self.name, support_level=verdict.support_level, confidence=verdict.confidence)
+                    else:
+                        claim.support_level, claim.confidence = verdict.support_level, verdict.confidence
+                    claim.semantic_review = None
+                    semantic_reviews = [r for r in semantic_reviews if r.claim_id != claim.id]
+                    claim_screening.append(dict(claim_id=claim.id, decision="lost_all_support" if not claim.supporting_evidence else "support_reassessed", removed_source_ids=lost_sources,
+                        removed_evidence_ids=lost_evidence, original_status=str(original.status), result_status=str(claim.status), reason=verdict.reason,
+                        removed_sources=[{"source_id": sid, "reason": "missing_input" if sid not in {s.id for s in request.sources} else "access_policy" if not source_proofs[sid]["legal_free"] else "scientific_criteria"} for sid in lost_sources],
+                        remaining_evidence_ids=claim.supporting_evidence, semantic_review_invalidated=True,
+                        outline_affected=bool(request.outline and claim.id in request.outline.claim_ids)))
+                    if claim.is_important or lost_evidence and not claim.is_writable or claim.status == ClaimStatus.PARTIALLY_SUPPORTED and not claim.qualifier:
+                        screening_findings.append(f"claim {claim.id} lost support during screening; review/revision required: {verdict.reason}")
+                claims.append(claim)
+            evidence = [e for e in evidence if e.claim_id in {c.id for c in claims}]
+            write_json(audit.run_dir / "claim_screening.json", {"input_integrity": original_integrity.violations, "resolved_by_recorded_withdrawal": resolved_integrity, "decisions": claim_screening, "findings": screening_findings}, root=request.project.directory, overwrite=True)
+            if screening_findings:
+                queue = ReviewQueue.load(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE))
+                for finding in screening_findings:
+                    if not any(item.reason == finding and item.status == "PENDING" for item in queue.items):
+                        queue.add(ReviewItem(item_type="audit", item_id=request.project.id, severity="HIGH", reason=finding, recommended_action="Repair input or record a claim/outline revision", blocks_finalization=True))
+                queue.save(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE), root=request.project.directory)
             orchestrated = OrchestratorAgent().execute(OrchestratorRequest(project=request.project,
                 claims=claims, evidence=evidence, sources=synthesis_sources, outline=request.outline,
                 semantic_reviews=semantic_reviews, verification_engine=request.verification_engine))
@@ -135,7 +182,7 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 stages.append("quantitative_review_workbook")
             quality = check_document_quality(orchestrated.draft, request.project, orchestrated.reference_list, synthesis_sources)
             queue = ReviewQueue.load(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE))
-            findings = list(quality["findings"])
+            findings = screening_findings + list(quality["findings"])
             if queue.blocking_items(): findings.append("blocking review items remain unresolved")
             if quantitative and quantitative["status"] != "PASS": findings.append("workbook/scoring is PARTIAL")
             allowed = orchestrated.success and not findings
@@ -166,6 +213,7 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 "needs_human_review": not allowed,
                 "human_style_audit_passed": style.passed if orchestrated.draft else False,
                 "document_quality": quality, "quantitative_review": quantitative,
+                "input_integrity": original_integrity.violations, "resolved_input_integrity": resolved_integrity, "claim_screening": claim_screening,
                 "clarification": quantitative["counts"].get("clarification") if quantitative else None,
                 "citation_audit_passed": orchestrated.citation_audit_passed, "fact_audit_passed": orchestrated.fact_audit_passed,
                 "review_findings": findings, "blocking_review_items": [i.to_dict() for i in queue.blocking_items()],

@@ -101,7 +101,7 @@ def _valid_evidence(claim_id: str, source_id: str) -> Evidence:
         claim_id=claim_id,
         source_id=source_id,
         evidence_text="Transformers rely on multi-head attention mechanisms to model dependencies without recurrent connections.",
-        location=EvidenceLocation(locator="abstract", page=6000),
+        location=EvidenceLocation(locator="abstract"),
         extraction_method=ExtractionMethod.VERBATIM_ABSTRACT,
         relationship=EvidenceRelationship.SUPPORTS,
         strength=EvidenceStrength.STRONG,
@@ -322,7 +322,7 @@ def test_fully_supported_claim_with_valid_source_evidence_location_and_review_pa
         evidence_id=evidence.id,
         source_id=source.id,
         evidence_excerpt=evidence.evidence_text,
-        location="p. 6000, §Abstract",
+        location="abstract",
     )
     outline = Outline(
         title="Valid Research Output",
@@ -572,7 +572,7 @@ def test_regression_evidence_and_excerpt_sharing_only_one_common_word_rejected(t
         claim_id=claim.id,
         source_id=source.id,
         evidence_text="Transformers rely on multi-head attention mechanisms to model dependencies without recurrent connections.",
-        location=EvidenceLocation(locator="abstract", page=6000),
+        location=EvidenceLocation(locator="abstract"),
         quote_verified=True,
     )
     # Excerpt only shares single word 'transformers' with completely different text
@@ -583,7 +583,7 @@ def test_regression_evidence_and_excerpt_sharing_only_one_common_word_rejected(t
         evidence_id=evidence.id,
         source_id=source.id,
         evidence_excerpt="Transformers are electric devices designed to convert alternating currents between voltages.",
-        location="p. 6000, §Abstract",
+        location="abstract",
     )
     outline = Outline(title="T", sections=[OutlineSection(title="S", claim_ids=[claim.id])])
 
@@ -682,7 +682,7 @@ def test_regression_duplicate_semantic_review_rejected(tmp_path: Path) -> None:
         evidence_id=evidence.id,
         source_id=source.id,
         evidence_excerpt=evidence.evidence_text,
-        location="p. 6000, §Abstract",
+        location="abstract",
     )
     rev2 = SemanticReview(
         claim_id=claim.id,
@@ -691,7 +691,7 @@ def test_regression_duplicate_semantic_review_rejected(tmp_path: Path) -> None:
         evidence_id=evidence.id,
         source_id=source.id,
         evidence_excerpt=evidence.evidence_text,
-        location="p. 6000, §Abstract",
+        location="abstract",
     )
     outline = Outline(title="T", sections=[OutlineSection(title="S", claim_ids=[claim.id])])
 
@@ -780,7 +780,7 @@ def test_regression_review_source_mismatch_from_evidence_source_rejected(tmp_pat
         evidence_id=evidence.id,
         source_id=source_2.id,  # Mismatch!
         evidence_excerpt=evidence.evidence_text,
-        location="p. 6000, §Abstract",
+        location="abstract",
     )
     response = FactAuditAgent().execute(
         FactAuditRequest(
@@ -976,7 +976,7 @@ def test_regression_provider_unavailable_requires_human_review(tmp_path: Path) -
         evidence_id=evidence.id,
         source_id=source.id,
         evidence_excerpt=evidence.evidence_text,
-        location="p. 6000, §Abstract",
+        location="abstract",
     )
     outline = Outline(title="T", sections=[OutlineSection(title="S", claim_ids=[claim.id])])
 
@@ -1078,7 +1078,7 @@ def test_regression_positive_verified_source_verbatim_evidence_full_review_produ
         claim_id=claim.id,
         source_id=source.id,
         evidence_text="Transformers rely on multi-head attention mechanisms to model dependencies without recurrent connections.",
-        location=EvidenceLocation(locator="abstract", page=6000),
+        location=EvidenceLocation(locator="abstract"),
         relationship=EvidenceRelationship.SUPPORTS,
         strength=EvidenceStrength.STRONG,
         extraction_method=ExtractionMethod.VERBATIM_ABSTRACT,
@@ -1092,7 +1092,7 @@ def test_regression_positive_verified_source_verbatim_evidence_full_review_produ
         evidence_id=evidence.id,
         source_id=source.id,
         evidence_excerpt=evidence.evidence_text,
-        location="p. 6000, §Abstract",
+        location="abstract",
         reviewer="antigravity_agent",
         method="semantic_evaluation",
     )

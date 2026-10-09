@@ -1,150 +1,131 @@
-# Spesifikasi Skema Input JSON (`run-academic`)
+# Kontrak input AAI untuk agent dan Hermes
 
-Perintah `python -m src run-academic --input-json <path>` menerima berkas JSON yang memetakan lima entitas utama: `project`, `sources`, `claims`, `evidence`, dan `outline`.
+Kontrak ini mengikuti AcademicWritingRequest dan skema aktual di src/schemas.
+[input-synthetic.json](input-synthetic.json) valid secara skema, berlabel
+SYNTHETIC TEST ONLY, dan sengaja belum layak final. Kasus positif dengan artefak
+lengkap diuji dalam tests/test_identity_location_claim_gates.py dan
+tests/test_workflow_audit_repairs.py. Jangan gunakan fixture sebagai artikel nyata.
 
-Seluruh objek divalidasi langsung oleh model Pydantic di `src/schemas/`.
+## Sumber, retrieval, identitas, dan pembacaan
 
----
+- Metadata yang tidak tersedia tetap null. Sumber baru DISCOVERED; APPROVED
+  dari input bukan bukti.
+- metadata.verification_artifact berisi path dan SHA-256 snapshot JSON dari
+  verification engine. Snapshot mengikat source_id, title, doi, verified_at,
+  provider_records (provider dan record). Gunakan snapshot tersimpan bila
+  identitas dan hash valid; internet ulang tidak wajib untuk setiap run.
+  Jangan menulis provider atau hasil verifikasi rekaan untuk penelitian nyata.
+- retrieval_path menunjuk PDF, HTML, atau ekstraksi JSON/text nyata.
+  metadata.retrieval memuat sha256, retrieved_at, retrieval_method, final_url
+  atau origin. Hash dihitung dari byte file yang tersimpan.
+- Identitas mengacu pada judul utama/front matter dengan normalisasi kapitalisasi,
+  spasi, tanda baca, dan baris terbungkus. DOI/judul dalam isi atau References
+  tidak membuktikan identitas. DOI utama bertentangan/layout ambigu memerlukan
+  review. Parser deterministik konservatif tidak membuktikan pemahaman ilmiah.
+- File tersedia, dapat dibaca, lengkap, legal/gratis, diperiksa penuh, dan
+  kutipan terverifikasi merupakan status terpisah. FULL_TEXT bukan bukti.
 
-## 1. Struktur Skema Lengkap & Tipe Data
+examination, eligibility_review, content_inspection, rights_inspection berada
+di source.metadata, mengikat source_id, artifact_sha256, reviewer, reviewed_at,
+serta sections berisi excerpt dan lokasi nyata. Examination scope: full
+memerlukan kutipan berbeda yang mencakup metode, hasil, dan pembahasan/kesimpulan
+pada artefak yang sama. Tiga string locator tidak cukup. Eligibility memakai
+decision: eligible serta criterion construct, population, design berlokasi.
+Rights inspection legal_free: true mengacu pada bukti lisensi/akses nyata.
+Content inspection scope: completeness, document_kind: full_text untuk layout
+tidak standar tetap memerlukan bukti isi berlokasi.
 
-```json
-{
-  "project": {
-    "schema_version": "1.0",
-    "name": "edjust-mini",
-    "workspace": "TUGAS 1",
-    "path": "c:\\Users\\HYPE AMD\\Downloads\\VIBE CODING\\AUTONOMI AGENTIC ILMIAH\\TUGAS 1\\edjust-mini",
-    "title": "Edjust: Edukasi Hukum dan Dukungan Sosial bagi Remaja Pasca-Perceraian",
-    "citation_style": "APA7",
-    "language": "id"
-  },
-  "sources": [
-    {
-      "id": "src_amato_2000",
-      "schema_version": "1.0",
-      "title": "The Consequences of Divorce for Adults and Children",
-      "authors": ["Amato, P. R."],
-      "year": 2000,
-      "venue": "Journal of Marriage and Family",
-      "volume": 62,
-      "issue": 4,
-      "pages": "1269–1287",
-      "doi": "10.1111/j.1741-3737.2000.01269.x",
-      "url": "https://doi.org/10.1111/j.1741-3737.2000.01269.x",
-      "source_type": "JOURNAL_ARTICLE",
-      "state": "APPROVED"
-    }
-  ],
-  "claims": [
-    {
-      "id": "clm_divorce_stress",
-      "schema_version": "1.0",
-      "claim_text": "Perceraian orang tua berpotensi menimbulkan distres dan beban penyesuaian bagi anak, namun dampaknya bervariasi tergantung pada ketersediaan faktor protektif dan kemampuan adaptasi individu.",
-      "importance": 3,
-      "status": "SUPPORTED",
-      "support_level": "STRONG",
-      "supporting_sources": ["src_amato_2000"],
-      "supporting_evidence": ["evd_amato_2000"],
-      "required_source_count": 1
-    }
-  ],
-  "evidence": [
-    {
-      "id": "evd_amato_2000",
-      "schema_version": "1.0",
-      "claim_id": "clm_divorce_stress",
-      "source_id": "src_amato_2000",
-      "evidence_text": "Penelitian empiris menunjukkan bahwa dampak perceraian terhadap kesejahteraan anak bervariasi secara substansial, di mana faktor moderasi dan sumber daya penanganan masalah berperan penting dalam adaptasi.",
-      "relationship": "supports",
-      "extraction_method": "MODEL_PARAPHRASE",
-      "verbatim": false,
-      "quote_verified": false,
-      "location": {
-        "locator": "abstract"
-      }
-    }
-  ],
-  "outline": {
-    "schema_version": "1.0",
-    "title": "Edjust: Kerangka Edukasi Hukum dan Dukungan Sosial bagi Remaja Pasca-Perceraian",
-    "sections": [
-      {
-        "schema_version": "1.0",
-        "title": "Tantangan Penyesuaian Remaja Pasca-Perceraian",
-        "level": 1,
-        "claim_ids": ["clm_divorce_stress"]
-      }
-    ]
-  }
-}
+## Kontrak lokasi bersama
+
+Evidence.location, sections inspection, criteria assessment memakai page,
+page_label, section, char_start, char_end, locator. Inspection/criteria boleh
+memakai object location bersarang.
+
+- page adalah nomor fisik 1-based dari parser, bukan nomor cetak yang ditebak.
+  page_label harus cocok dengan peta parser.
+- section harus tersedia dan kutipan berada dalam batasnya.
+- char_start/char_end wajib berpasangan, 0-based/end-exclusive pada parsed
+  full_text. Separator halaman ikut dihitung.
+- Locator yang didukung: p. 2, page 2, halaman 2, Results, section: Results,
+  §Results, p. 2, Results. body/document/retrieved content merupakan scope
+  dokumen; cakupan examination tetap berasal dari lokasi kutipan sebenarnya.
+- Semua koordinat diperiksa sekaligus. Page salah tidak diterima hanya karena
+  section benar. Locator bebas, paragraph, anchor tanpa peta ekstraksi tetap
+  belum terverifikasi. Jangan membuat lokasi pengganti.
+
+VERBATIM_ABSTRACT memakai snapshot abstrak terverifikasi; halaman/rentang
+full-text hanya boleh digunakan bila benar-benar tersedia pada artefaknya.
+VERBATIM_FULLTEXT/TABULAR_VALUE memakai body berlokasi. quote_verified selalu
+dicocokkan ulang; jangan menimpa abstract dengan body. Sumber diperiksa penuh
+boleh memakai evidence abstrak: kedalaman pembacaan dan asal kutipan berbeda.
+Containment dalam teks caller membuktikan ekstraksi, belum verifikasi snapshot.
+
+## Klaim, outline, dan semantic review
+
+ID corpus asli diperiksa sebelum screening akses. Evidence.claim_id harus
+sesuai claim yang merujuknya. Outline merujuk klaim tersedia dan layak ditulis.
+Dukungan hilang dicatat dalam runs/<run_id>/claim_screening.json, response
+metadata, dan run summary. Dukungan tersisa dinilai ulang melalui evaluate_claim;
+semantic review untuk dukungan lama tidak dianggap masih berlaku.
+HIGH/CRITICAL memerlukan review/revisi sebelum final. Input asli dan corpus
+tetap tersimpan.
+
+Jika klaim sengaja dikeluarkan, gunakan transisi WITHDRAWN dengan history nyata
+(to_state, reason, actor, at) dan revisi outline. Jangan menghapus record untuk
+menyembunyikan ID rusak. Klaim yang masih dibutuhkan dan kehilangan dukungan
+tetap menghalangi finalisasi. HIGH/CRITICAL, angka, kausalitas, arah, mekanisme,
+efektivitas, atau klaim absolut tetap membutuhkan semantic review nyata lengkap:
+claim_id, decision, reason, evidence_id, source_id, evidence_excerpt, location,
+reviewer, method, timestamp.
+
+## Project dan workbook
+
+- project.output_type: literature_review memerlukan bagian Pendahuluan, Metode,
+  Hasil/Pembahasan, Keterbatasan, Kesimpulan, Referensi yang terisi.
+  Metode Penelusuran Literatur dan Keterbatasan Literatur merupakan alias
+  exact dari schemas/outline.py; heading tidak berkaitan tidak diterima.
+  Isi subseksi dihitung pada induk. required_sections menghormati template;
+  output lain mengikuti kontraknya sendiri.
+- require_free_full_text di request atau project.research_options adalah
+  kebijakan proyek. Sumber final harus memenuhi konstruk/populasi/desain
+  serta akses full-text legal gratis yang diperoleh dan terbaca.
+  source.metadata.version mencatat version_of_record/published_version,
+  accepted_manuscript, atau preprint sesuai artefak aktual.
+  Metode dan keterbatasan harus mengungkap pembatasan akses gratis.
+- quantitative_review: true memakai template standar pengguna. Record membawa
+  source_snapshot dan assessment: source_id, artifact_sha256, reviewer,
+  reviewed_at, criteria berisi pillar sesuai rubrik, score, lokasi,
+  evidence_excerpt. Total harus cocok dengan jumlah skor terverifikasi.
+  Ranking final memerlukan pemeriksaan penuh berlokasi dan rubrik lengkap.
+  Placeholder bobot/anchor berarti scoring belum final.
+- Empat puluh target awal, bukan maksimum. Semua artikel lolos dan peringkat
+  berlanjut. quantitative_review_exact_count/best_count hanya sesuai instruksi;
+  artikel terbaik tanpa jumlah menghasilkan klarifikasi terstruktur.
+  Corpus dan alasan tidak dipilih tetap ada.
+
+## Status, resume, dan run yang benar
+
+success mempertahankan kontrak lama. Baca metadata.execution_success,
+result_status (PASS/PARTIAL/FAILED), finalization_allowed, needs_human_review.
+Exit code saja tidak menentukan hasil ilmiah. PARTIAL dapat disimpan/diekspor;
+workbook PARTIAL, bagian kosong, audit gagal, review PENDING yang memblokir
+mencegah final.docx.
+
+Dari DATA BASE, gunakan interpreter proyek dan periksa tools yang diperlukan.
+Health check lokal tidak membuktikan provider/model.
+
+```powershell
+python -m src check
+python -m src run-academic --input-json input.json
+# Revisi: gunakan project/path aktual dari response, pertahankan opsi.
+python -m src run-academic --input-json revision.json --resume
+python -m src runs --input-json revision.json --run-id <run_id>
+python -m src finalize <project_aktual>
+python -m src export-bundle --input-json revision.json --run-id <run_id>
 ```
 
----
-
-## 2. Penjelasan Bidang Kunci per Objek
-
-### A. Objek `project`
-- `name` (string, wajib): Nama folder proyek yang akan dibuat di dalam workspace.
-- `workspace` (string, opsional): Nama workspace target (default: `"TUGAS 1"`).
-- `path` (string, wajib): Path absolut folder tempat luaran akan disimpan.
-- `title` (string, wajib): Judul naskah dokumen akademik.
-- `citation_style` (string): Gaya sitasi, gunakan `"APA7"`.
-- `language` (string): Kode bahasa, gunakan `"id"` untuk Bahasa Indonesia.
-
-### B. Objek `sources`
-- `id` (string, wajib): Identifier unik lokal (misal: `"src_amato_2000"`).
-- `title` (string, wajib): Judul lengkap karya ilmiah asli (tidak boleh dikarang).
-- `authors` (array of string, wajib): Daftar nama penulis terstandardisasi, misal `["Amato, P. R."]`.
-- `year` (integer, wajib): Tahun publikasi resmi.
-- `venue` (string, wajib): Nama jurnal, prosiding, atau penerbit.
-- `volume` (integer/string, opsional): Nomor volume jurnal.
-- `issue` (integer/string, opsional): Nomor terbitan/isu jurnal.
-- `pages` (string, opsional): Rentang halaman artikel, misal `"1269–1287"`.
-- `doi` (string, opsional tapi sangat disarankan): Digital Object Identifier resmi (misal: `"10.1111/j.1741-3737.2000.01269.x"`).
-- `url` (string, opsional): Tautan canonical resolusi DOI aktif.
-- `source_type` (string): Klasifikasi tipe sumber (`"JOURNAL_ARTICLE"`, `"BOOK"`, `"CONFERENCE_PAPER"`, dll).
-- `state` (string, wajib): Posisi dalam siklus verifikasi. Gunakan `"APPROVED"` untuk sumber yang telah diverifikasi keabsahannya.
-
-#### Penanganan `[sumber belum lengkap]`:
-Bila suatu karya ilmiah belum dapat diverifikasi salah satu metadata pentingnya (misal: volume atau nomor halaman tidak terlacak di basis data resmi):
-* Jangan pernah mengarang angka halaman atau volume!
-* Biarkan field yang hilang bernilai `null`.
-* Jika nama penulis atau tahun tidak ditemukan, sistem audit dan writer akan menandai sitasi dengan penanda eksplisit `[sumber belum lengkap]`.
-
-### C. Objek `claims`
-- `id` (string, wajib): Identifier unik klaim (misal: `"clm_divorce_stress"`).
-- `claim_text` (string, wajib): Pernyataan faktual yang ingin diajukan dalam naskah.
-- `importance` (integer, 1–4): Derajat kepentingan klaim (3 = `HIGH`, 4 = `CRITICAL`).
-- `status` (string, wajib): Status pembuktian (`"SUPPORTED"`, `"PARTIALLY_SUPPORTED"`, `"CONFLICTED"`).
-- `support_level` (string): Bobot dukungan bukti (`"STRONG"`, `"MODERATE"`, `"WEAK"`).
-- `supporting_sources` (array of string): Daftar `id` sumber yang mendukung klaim ini.
-- `supporting_evidence` (array of string): Daftar `id` evidence yang membuktikan klaim ini.
-
-### D. Objek `evidence`
-- `id` (string, wajib): Identifier unik evidence (misal: `"evd_amato_2000"`).
-- `claim_id` (string, wajib): ID klaim yang dibuktikan oleh evidence ini.
-- `source_id` (string, wajib): ID sumber tempat evidence ini ditemukan.
-- `evidence_text` (string, wajib): Teks kutipan langsung atau ringkasan temuan empiris.
-- `relationship` (string): Relasi ke klaim (`"supports"`, `"partially_supports"`, `"contradicts"`).
-- `extraction_method` (string): Metode ekstraksi (`"MODEL_PARAPHRASE"`, `"VERBATIM_FULLTEXT"`, `"VERBATIM_ABSTRACT"`).
-- `location` (object): Lokasi penemuan dalam teks asli (`locator`, `page`, atau `section`).
-
-### E. Objek `outline`
-- `title` (string, wajib): Judul dokumen yang akan dicetak sebagai Heading 1.
-- `sections` (array of section objects):
-  - `title` (string, wajib): Judul sub-bab (Heading 2).
-  - `level` (integer): Tingkat heading (default: 1).
-  - `claim_ids` (array of string, wajib): Daftar klaim yang akan dinarasikan di dalam sub-bab ini.
-
----
-
-## 3. Luaran Minimal yang Dihasilkan
-
-Setelah payload JSON berhasil diproses oleh alur kerja, folder proyek akan memuat:
-1. `draft.md`: Naskah naskah lengkap dalam format Markdown beserta in-text citation APA 7.
-2. `final.docx`: Dokumen Microsoft Word resmi hasil kompilasi.
-3. `citation_audit.json`: Rekam audit sitasi (0 orphan, 0 internal tokens).
-4. `fact_audit.json`: Rekam audit fakta dan evidence.
-5. `runs/<run_id>/`: Jejak audit trail per-run lengkap (snapshot input, sumber, klaim, evidence, outline, dan `run_summary.json`).
-6. `exports/bundle_<run_id>.zip`: Arsip mandiri jika sub-command `export-bundle` dijalankan.
+Tugas baru membuat project unik; revisi membuat run baru dalam project sama.
+Periksa run_summary.json, snapshot audit sitasi/fakta/gaya, document_quality,
+review queue, claim_screening, status workbook, artefak aktual, hash, dan ZIP
+berdasarkan run_id. Jangan membaca final.docx/run lama sebagai hasil terbaru.
+Manifest checksum ZIP terpisah menghindari circular checksum.

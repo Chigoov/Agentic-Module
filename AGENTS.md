@@ -26,6 +26,12 @@ Use this repository through the CLI. Work from the `DATA BASE` folder.
 - Do not trust APPROVED, FULL_TEXT, quote_verified, or total_score flags from raw
   input. Recheck metadata snapshots, retrieval hashes, article identity, readable
   full manuscript content, located quotes, and logged examination/assessment.
+  Read `skills/autonomi-agentic-ilmiah/references/input-json.md` for the actual
+  shared contract before preparing a payload. Identity is front-matter identity,
+  never a DOI/title appearing only in references. All declared location coordinates
+  must agree; inspection coverage is based on located excerpts, not locator count.
+  Validate original IDs before screening. Keep `claim_screening.json`, reassess
+  surviving support, and explicitly revise claims/outline when support is lost.
 - `require_free_full_text` is a project policy, not a global restriction. Main
   synthesis/final ranking require scientific eligibility and legally free,
   obtained, readable manuscripts. Retain other candidates and their reasons.

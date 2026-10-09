@@ -2,6 +2,14 @@
 
 Evidence-controlled autonomous academic research workflow engine.
 
+Agent/Hermes payloads must follow the current
+[input contract](skills/autonomi-agentic-ilmiah/references/input-json.md), also
+linked by both repository skills. The supplied
+[synthetic input](skills/autonomi-agentic-ilmiah/references/input-synthetic.json)
+is schema-valid and deliberately PARTIAL. Positive synthetic pipeline tests
+do not verify real literature, providers, or Hermes execution. Proposed research
+rubric: [reviewable proposal](docs/USULAN_RUBRIK_KUANTITATIF.md), not approved weights.
+
 **System root:** `DATA BASE/`
 
 AUTONOMI AGENTIC ILMIAH is an academic research operating system designed
@@ -88,13 +96,13 @@ aai.bat check
 aai.bat open
 
 :: 3. Jalankan workflow akademik dari input JSON
-aai.bat run input_edjust_mini.json
+aai.bat run skills/autonomi-agentic-ilmiah/references/input-synthetic.json
 
 :: 4. Lihat riwayat audit trail eksekusi
-aai.bat runs input_edjust_mini.json
+aai.bat runs skills/autonomi-agentic-ilmiah/references/input-synthetic.json
 
 :: 5. Ekspor bundle paket riset (.zip)
-aai.bat bundle input_edjust_mini.json
+aai.bat bundle skills/autonomi-agentic-ilmiah/references/input-synthetic.json
 ```
 
 ---

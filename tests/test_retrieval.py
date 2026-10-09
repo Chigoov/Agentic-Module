@@ -81,7 +81,9 @@ def test_retrieval_feeds_verbatim_evidence_extraction(tmp_path: Path) -> None:
         location=EvidenceLocation(locator="abstract"),
     )
     assert result.found is True
-    assert result.evidence.is_citable_quotation is True
+    # Extracting a raw, unverified abstract does not prove its article identity.
+    assert result.evidence.is_citable_quotation is False
+    assert result.evidence.notes
 
 
 def test_retrieval_does_not_regress_approved_source(tmp_path: Path) -> None:

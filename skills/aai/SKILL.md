@@ -9,6 +9,14 @@ metadata:
 
 Skill ini adalah alias pendek untuk **AUTONOMI AGENTIC ILMIAH (AAI)**.
 
+Untuk payload dan gerbang terbaru, **baca lebih dahulu**
+[kontrak input bersama](../autonomi-agentic-ilmiah/references/input-json.md).
+Contoh [input sintetis](../autonomi-agentic-ilmiah/references/input-synthetic.json)
+valid secara skema tetapi sengaja PARTIAL; bukan penelitian/provider nyata.
+Kontrak mencakup verification_artifact, retrieval/hash, examination,
+eligibility_review, assessment berlokasi, output_type/required_sections,
+require_free_full_text, quantitative_review, resume, dan bundle per run_id.
+
 Protokol ini diaktifkan saat pengguna meminta:
 - *"skill aai"*, *"gunakan AAI"*, *"pakai Autonomi Agentic Ilmiah"*, atau penulisan riset akademik anti-halusinasi.
 
@@ -32,9 +40,15 @@ Protokol ini diaktifkan saat pengguna meminta:
    - `fact_audit.json` ➔ harus `"passed": true`.
    - `human_style_audit.json` ➔ harus `"passed": true` (bebas dari tambahan tak diminta, frasa klise AI, dan tabel berlebihan).
    - Naskah akhir bebas dari token internal (`turn...`, `view...`, `search...`, `filecite`, `【...】`).
-   - Berkas `final.docx` berhasil terbuat.
+   - Baca metadata `execution_success`, `result_status`, `finalization_allowed`,
+     `needs_human_review` dan `runs/<run_id>/run_summary.json` aktual. PASS final
+     memerlukan workbook/scoring yang final, quality gate, serta review queue
+     bebas item yang memblokir. PARTIAL boleh disimpan/diekspor; jangan menuntut
+     atau mengaku memiliki `final.docx` ketika finalisasi belum diizinkan.
 7. **Perbaiki Input jika Gagal:**
-   Jika audit menolak (`passed: false`), baca alasan penolakan di `fact_audit.json`, lalu perbaiki input JSON. Dilarang memalsukan draf manual.
+   Jika audit menolak, baca alasan dan `claim_screening.json`, lalu perbaiki input
+   serta outline. Revisi memakai project aktual dan `--resume`, bukan membuat
+   tugas baru. Ekspor/riwayat pilih `--run-id` yang benar. Dilarang memalsukan review.
 
 ---
 

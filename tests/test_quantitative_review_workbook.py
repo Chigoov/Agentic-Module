@@ -36,6 +36,7 @@ def assessed_records(count: int, root: Path, template: Path):
     records = []
     for index in range(1, count + 1):
         source = fixture_source(Source(id=f"src_fixture_{index}", title=f"Synthetic article {index}",
+            authors=[f"Fixture{chr(65 + index // 26)}{chr(65 + index % 26)}, A."], year=2025, venue="Synthetic test journal",
             doi=f"10.1234/fixture.{index}", state=SourceState.APPROVED,
             rights_status="OPEN_LICENSE", access_mode="OPEN_DOWNLOAD", license_url="https://creativecommons.org/licenses/by/4.0/"),
             "Synthetic methods evidence.", root / "sources")
@@ -53,7 +54,7 @@ def assessed_records(count: int, root: Path, template: Path):
         score = index % 10
         records.append({"title": source.title, "citation": f"Fixture{index} (2025)", "eligible": True,
             "doi": source.doi, "source_snapshot": source.model_dump(mode="json"), "total_score": score * 3,
-            "assessment": {"artifact_sha256": digest, "reviewer": "synthetic test reviewer", "reviewed_at": "2026-10-09",
+            "assessment": {"source_id": source.id, "artifact_sha256": digest, "reviewer": "synthetic test reviewer", "reviewed_at": "2026-10-09",
                 "criteria": [{"pillar": pillar, "score": score, "locator": loc, "evidence_excerpt": excerpt}
                     for pillar, (loc, excerpt) in zip(pillars, excerpts)]}})
     return records, weighted

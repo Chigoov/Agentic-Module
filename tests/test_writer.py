@@ -181,11 +181,10 @@ def test_writer_never_invents_citations(tmp_path: Path) -> None:
     request = WriterRequest(project=project, outline=outline, claims=[claim])
     response = WriterAgent().execute(request)
 
-    assert response.success
-    # No author-year pointer may be synthesized for an unknown source.
-    assert "(Smith" not in response.draft
-    assert response.reference_list is not None
-    assert response.reference_list.entries == []
+    assert not response.success and response.needs_human_review
+    assert "src_missing" in response.error_message
+    # Missing input is rejected, rather than silently dropping its citation.
+    assert not response.draft_path and not response.draft
 
 
 def test_writer_writes_draft_to_disk(tmp_path: Path) -> None:
