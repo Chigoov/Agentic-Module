@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, TaskAnalyzerAgent, TaskAnalyzerRequest
 from src.core.paths import get_paths
+from src.core.project_manager import ProjectManager
 from src.runtime.bootstrap import health_check
 from src.runtime.execution import create_execution_project, ensure_workflow_ready
 from src.runtime.progress import read_progress, record_progress
@@ -33,8 +34,6 @@ __all__ = ["create_handler", "serve", "get_api_token"]
 #: Maximum accepted request body (audit A15): oversized payloads are rejected
 #: with 413 instead of being read without bound.
 _MAX_BODY_BYTES = 10 * 1024 * 1024
-#: Environments where Origin may legitimately be absent (curl, CLI tools).
-_TRUSTED_ORIGIN_SUFFIXES: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]")
 
 
 def get_api_token() -> str:
@@ -238,7 +237,7 @@ def _project_from_payload(payload: dict[str, Any]) -> Project:
     if payload.get("resume"):
         if template is None or not (template.directory / "project.json").is_file():
             raise ValueError("Resume requires an existing server-owned project")
-        return Project.model_validate(json.loads((template.directory / "project.json").read_text(encoding="utf-8")))
+        return ProjectManager(paths=paths).load_manifest(template.directory / "project.json")
     project_name = payload.get("project_name") or payload.get("topic") or "research"
     workspace_name = str(payload.get("workspace") or (template.workspace if template else "TUGAS 1"))
     # The monitor may run against a fresh portable root; create only the
@@ -285,7 +284,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
         # CORS narrowed to loopback origins only (audit A06): same-origin
         # pages need no CORS header, foreign pages get none.
         origin = self.headers.get("Origin", "")
-        if any(origin.rstrip("/").endswith(suffix) for suffix in _TRUSTED_ORIGIN_SUFFIXES):
+        if origin and self._origin_allowed():
             self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Autonomi-Token")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -301,15 +300,38 @@ class MonitorHandler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         if not origin:
             return True
-        return any(origin.rstrip("/").endswith(suffix) for suffix in _TRUSTED_ORIGIN_SUFFIXES)
+        try:
+            parsed = urlparse(origin)
+            return (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+                    and (parsed.port or 80) == self.server.server_port
+                    and not parsed.username and not parsed.password and not parsed.path
+                    and not parsed.query and not parsed.fragment)
+        except ValueError:
+            return False
+
+    def _host_allowed(self) -> bool:
+        try:
+            parsed = urlparse("//" + self.headers.get("Host", ""))
+            return (parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+                    and (parsed.port or 80) == self.server.server_port
+                    and not parsed.username and not parsed.password and not parsed.path
+                    and not parsed.query and not parsed.fragment)
+        except ValueError:
+            return False
     def _token_ok(self) -> bool:
         """Write endpoints require the local API token (audit A06)."""
         provided = self.headers.get("X-Autonomi-Token", "")
         return bool(provided) and secrets.compare_digest(provided, get_api_token())
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not self._host_allowed() or not self._origin_allowed():
+            self._json(403, {"success": False, "error": "untrusted host or origin"})
+            return
         self._send(204, b"", "text/plain; charset=utf-8")
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._host_allowed():
+            self._json(403, {"success": False, "error": "untrusted host"})
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/":
             self._send(200, INDEX if "job_id" in parse_qs(parsed.query) else HOME_INDEX, "text/html; charset=utf-8")
@@ -328,28 +350,18 @@ class MonitorHandler(BaseHTTPRequestHandler):
             asset = Path(__file__).with_name("static") / Path(parsed.path).name
             content_type = {".jpg": "image/jpeg", ".webp": "image/webp", ".png": "image/png", ".js": "text/javascript; charset=utf-8"}[asset.suffix]
             self._send(200, asset.read_bytes(), content_type)
-        elif parsed.path == "/api/check":
-            record_progress("check", "running", message="Health check started")
-            ok = health_check(verbose=False)
-            record_progress("check", "success" if ok else "failed", message="Health check completed")
-            self._json(200 if ok else 500, {"success": ok})
-        elif parsed.path == "/api/plan":
-            query = parse_qs(parsed.query)
-            topic = query.get("topic", [""])[0]
-            workspace = query.get("workspace", ["TUGAS 1"])[0]
-            record_progress("plan", "running", message=topic)
-            payload = _plan(topic, workspace)
-            record_progress("plan", "success" if payload["success"] else "failed", message="Plan completed")
-            self._json(200 if payload["success"] else 500, payload)
+        elif parsed.path in {"/api/check", "/api/plan"}:
+            self._json(405, {"success": False, "error": "Use authenticated POST for this operation"})
         else:
             self._json(404, {"success": False, "error": "not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if urlparse(self.path).path != "/api/run-academic":
+        route = urlparse(self.path).path
+        if route not in {"/api/run-academic", "/api/plan", "/api/check"}:
             self._json(404, {"success": False, "error": "not found"})
             return
         # Guards first (audit A06): Origin allowlist, then the local token.
-        if not self._origin_allowed():
+        if not self._host_allowed() or not self._origin_allowed():
             self._json(403, {"success": False, "error": "cross-origin requests are not allowed"})
             return
         if not self._token_ok():
@@ -374,6 +386,14 @@ class MonitorHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8") or "{}")
             if not isinstance(payload, dict):
                 raise ValueError("request body must be a JSON object")
+            if route == "/api/check":
+                ok = health_check(verbose=False)
+                self._json(200 if ok else 500, {"success": ok})
+                return
+            if route == "/api/plan":
+                result = _plan(str(payload.get("topic", "")), str(payload.get("workspace", "TUGAS 1")))
+                self._json(200 if result["success"] else 400, result)
+                return
             project = _project_from_payload(payload)
             claims = [Claim.model_validate(x) for x in payload.get("claims", [])]
             evidence = [Evidence.model_validate(x) for x in payload.get("evidence", [])]
@@ -400,7 +420,9 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 **review_options(payload, project),
             )
         )
-        record_progress("academic", "success" if response.success else "failed", message=response.error_message or "Academic workflow completed")
+        status = str(response.metadata.get("result_status") or ("PARTIAL" if response.needs_human_review else "PASS" if response.success else "FAILED")).lower()
+        record_progress("academic", "success" if status == "pass" else status, message=response.error_message or "Academic workflow completed",
+                        result_status=status.upper(), finalization_allowed=response.metadata.get("finalization_allowed", False))
         self._json(200 if response.success else 400, response.model_dump(mode="json"))
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -412,6 +434,8 @@ def create_handler() -> type[MonitorHandler]:
 
 
 def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("Monitor only supports loopback binding")
     server = ThreadingHTTPServer((host, port), create_handler())
     print(_json({"success": True, "url": f"http://{host}:{port}"}))
     try:

@@ -15,6 +15,9 @@ import os
 import re
 import tempfile
 import urllib.request
+import urllib.parse
+import ipaddress
+import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html.parser import HTMLParser
@@ -29,6 +32,7 @@ from src.schemas.project import Project
 from src.schemas.source import AccessMode, RetrievalStatus, RightsStatus, Source, SourceState, SourceType
 from src.tools.base import BaseTool, ToolRequest, ToolResponse
 from src.tools.pdf_parser import PDFParserTool
+from src.tools.http_client import read_bounded
 
 __all__ = [
     "RetrievedPayload",
@@ -102,6 +106,7 @@ class RetrievalRequest(ToolRequest):
     download_url: str | None = None
     max_file_size_bytes: int = Field(default=50 * 1024 * 1024, ge=1)  # 50 MiB default
     allow_overwrite: bool = False
+    allow_direct_download: bool = True
 
 
 class RetrievalResponse(ToolResponse):
@@ -114,6 +119,27 @@ class RetrievalResponse(ToolResponse):
 Fetcher = Callable[[str, int], RetrievedPayload]
 
 
+def _public_destination(url: str) -> None:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("Retrieval requires an http/https URL without credentials")
+    addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+    if not addresses or any(not ipaddress.ip_address(item[4][0]).is_global for item in addresses):
+        raise ValueError("Retrieval destination must resolve exclusively to public IP addresses")
+
+
+class _PublicRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        _public_destination(newurl)
+        return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+
+def _open_download_rights(source: Source) -> bool:
+    return source.access_mode == AccessMode.OPEN_DOWNLOAD and source.rights_status in {
+        RightsStatus.PUBLIC_DOMAIN, RightsStatus.OPEN_LICENSE, RightsStatus.PROVIDER_STATED_FREE,
+    }
+
+
 class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
     """Retrieve available source content and update the source record."""
 
@@ -122,7 +148,12 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
 
     def __init__(self, *, fetcher: Fetcher | None = None) -> None:
         super().__init__()
-        self._fetcher = fetcher or self._fetch_url
+        self._fetcher = fetcher
+
+    def _fetch(self, url: str, request: RetrievalRequest) -> RetrievedPayload:
+        if self._fetcher:
+            return self._fetcher(url, request.timeout_seconds)
+        return self._fetch_url(url, request.timeout_seconds, request.max_file_size_bytes)
 
     def _execute(self, request: RetrievalRequest) -> RetrievalResponse:
         if request.project is None or not isinstance(request.project, Project):
@@ -169,7 +200,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
         wants_direct_dl = request.direct_download or bool(request.download_url)
         has_downloads = bool(source.download_urls) and source.download_allowed and not source.abstract
 
-        if wants_direct_dl or has_downloads:
+        if request.allow_direct_download and (wants_direct_dl or has_downloads):
             return self._execute_direct_download(request)
 
         # Fallback to abstract if available
@@ -181,7 +212,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                 source.update_reading_depth(ReadingDepth.ABSTRACT_ONLY, reason="Persisted abstract content", actor=self.name)
         elif source.url:
             try:
-                payload = self._fetcher(source.url, request.timeout_seconds)
+                payload = self._fetch(source.url, request)
             except Exception as exc:
                 source.retrieval_status = RetrievalStatus.FAILED
                 source.record_error(code="URL_FETCH_FAILED", message=f"Failed to fetch {source.url}: {exc}")
@@ -200,7 +231,25 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                     source=source,
                 )
 
-            suffix = self._suffix(payload.content_type, source.url)
+            if len(payload.content) > request.max_file_size_bytes:
+                return RetrievalResponse.failure(error_code="FILE_SIZE_EXCEEDED",
+                    error_message="Retrieved content exceeds byte limit", source=source)
+
+            if ("pdf" in payload.content_type.lower() or payload.content.startswith(b"%PDF") or source.url.lower().endswith(".pdf")) and not _open_download_rights(source):
+                return self._refuse_download(request=request, code="DOWNLOAD_RIGHTS_UNCLEAR",
+                    reason="Generic PDF route requires the same open-download rights as direct download",
+                    recommended_action="Confirm license and access rights", severity="HIGH")
+
+            suffix = "pdf" if payload.content.startswith(b"%PDF") else self._suffix(payload.content_type, source.url)
+            if suffix == "pdf":
+                parsed = PDFParserTool().parse(payload.content)
+                if not parsed.success:
+                    return RetrievalResponse.failure(error_code="PDF_PARSE_FAILED", error_message=parsed.error_message, source=source)
+                parsed_text = parsed.full_text or None
+                source.metadata["pdf_pages"] = [p.to_dict() for p in parsed.pages]
+                source.metadata["unreadable_pages"] = parsed.unreadable_pages
+            else:
+                parsed_text = self._parse(payload)
             sha256_hash = hashlib.sha256(payload.content).hexdigest()
             path = self._write_bytes_with_safety(
                 request.project,
@@ -210,7 +259,6 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                 sha256_hash,
                 allow_overwrite=request.allow_overwrite,
             )
-            parsed_text = self._parse(payload)
             method = "url"
             if payload.final_url and payload.final_url != source.url:
                 source.metadata["retrieval_final_url"] = payload.final_url
@@ -325,14 +373,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
         # Rule: UNKNOWN, BORROW_ONLY, PREVIEW_ONLY, RESTRICTED are forbidden.
         # Only OPEN_DOWNLOAD with PUBLIC_DOMAIN, OPEN_LICENSE, or PROVIDER_STATED_FREE is permitted.
         # Providing an explicit request.download_url CANNOT bypass these rights checks.
-        is_open_rights = source.rights_status in {
-            RightsStatus.PUBLIC_DOMAIN,
-            RightsStatus.OPEN_LICENSE,
-            RightsStatus.PROVIDER_STATED_FREE,
-        }
-        is_open_access = source.access_mode == AccessMode.OPEN_DOWNLOAD
-
-        if not (is_open_rights and is_open_access):
+        if not _open_download_rights(source):
             code = (
                 "DOWNLOAD_RIGHTS_UNCLEAR"
                 if source.rights_status == RightsStatus.UNKNOWN or source.access_mode == AccessMode.UNKNOWN
@@ -363,7 +404,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
 
         # 3. Fetch content
         try:
-            payload = self._fetcher(target_url, request.timeout_seconds)
+            payload = self._fetch(target_url, request)
         except Exception as exc:
             source.retrieval_status = RetrievalStatus.FAILED
             source.record_error(code="DOWNLOAD_FAILED", message=f"Failed to download from {target_url}: {exc}")
@@ -397,22 +438,19 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
 
         # 4. Hash and path safety
         sha256_hash = hashlib.sha256(payload.content).hexdigest()
-        suffix = self._suffix(payload.content_type, target_url)
-
-        path = self._write_bytes_with_safety(
-            request.project,
-            source,
-            suffix,
-            payload.content,
-            sha256_hash,
-            allow_overwrite=request.allow_overwrite,
-        )
+        suffix = "pdf" if payload.content.startswith(b"%PDF") else self._suffix(payload.content_type, target_url)
 
         # 5. Parse document (page-aware for PDF)
         parsed_text = None
         pdf_pages: list[dict] = []
         if suffix == "pdf" or "pdf" in payload.content_type.lower():
             pdf_res = PDFParserTool().parse(payload.content)
+            if not pdf_res.success:
+                source.retrieval_status = RetrievalStatus.FAILED
+                return RetrievalResponse.failure(error_code="PDF_PARSE_FAILED", error_message=pdf_res.error_message, source=source)
+            source.metadata["unreadable_pages"] = pdf_res.unreadable_pages
+            if pdf_res.ocr_required:
+                source.add_verification_note(f"OCR_REQUIRED_OR_BLANK: Pages {pdf_res.unreadable_pages} require inspection")
             if pdf_res.success and pdf_res.has_text_layer and pdf_res.full_text:
                 parsed_text = pdf_res.full_text
                 pdf_pages = [p.to_dict() for p in pdf_res.pages]
@@ -425,6 +463,8 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                 source.metadata["parsed_readable"] = True
 
         # 6. Record retrieval metadata
+        path = self._write_bytes_with_safety(request.project, source, suffix, payload.content,
+            sha256_hash, allow_overwrite=request.allow_overwrite)
         retrieval_meta = {
             "retrieval_method": "direct_download",
             "content_type": payload.content_type,
@@ -471,7 +511,19 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
     @staticmethod
     def _check_article_content(request):
         if request.source.source_type in {SourceType.BOOK, SourceType.BOOK_CHAPTER, SourceType.WEB_RESOURCE}:
-            return True  # Article topology does not establish completeness of books.
+            source = request.source
+            allowed = (source.access_mode in {AccessMode.OPEN_DOWNLOAD, AccessMode.READ_ONLINE}
+                and source.rights_status in {RightsStatus.PUBLIC_DOMAIN, RightsStatus.OPEN_LICENSE, RightsStatus.PROVIDER_STATED_FREE}
+                and Path(source.retrieval_path or "").suffix.lower() == ".pdf"
+                and bool(source.metadata.get("pdf_pages"))
+                and not source.metadata.get("unreadable_pages"))
+            source.metadata["content_verification"] = {"full_text": allowed,
+                "basis": "readable_pdf_all_pages" if allowed else "landing_page_or_incomplete_content",
+                "semantic_assessment": "not_established"}
+            if not allowed:
+                source.retrieval_status = RetrievalStatus.PARTIAL
+                source.metadata["artifact_kind"] = "landing_page_or_incomplete_content"
+            return allowed
         from src.tools.source_content import inspect_source
         proof = inspect_source(request.source, request.project.directory)
         request.source.metadata["content_verification"] = {k:v for k,v in proof.items() if k not in {"text", "pages"}}
@@ -482,11 +534,13 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
         return proof["full_text"]
 
     @staticmethod
-    def _fetch_url(url: str, timeout_seconds: int) -> RetrievedPayload:
-        with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+    def _fetch_url(url: str, timeout_seconds: int, max_bytes: int = 50 * 1024 * 1024) -> RetrievedPayload:
+        _public_destination(url)
+        opener = urllib.request.build_opener(_PublicRedirect())
+        with opener.open(url, timeout=timeout_seconds) as response:
             content_type = response.headers.get("content-type", "application/octet-stream")
             return RetrievedPayload(
-                content=response.read(),
+                content=read_bounded(response, max_bytes),
                 content_type=content_type,
                 final_url=response.geturl(),
             )

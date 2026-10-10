@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
+import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -13,27 +16,69 @@ from src.tools.pdf_parser import PDFParserTool
 from src.tools.source_mapper import best_title_match, normalize_doi, normalize_title
 
 
+def sign_verification_snapshot(data: dict) -> dict:
+    """Bind verifier-produced snapshots to this installation, never to caller hashes."""
+    from src.core.paths import get_paths
+    key_path = get_paths().cache_dir / "verification" / ".snapshot-key"
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with key_path.open("xb") as stream:
+            stream.write(secrets.token_bytes(32))
+    except FileExistsError:
+        pass
+    payload = dict(data)
+    payload.pop("signature", None)
+    payload["signature"] = hmac.digest(key_path.read_bytes(),
+        json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"), "sha256").hex()
+    return payload
+
+
 def stored_metadata(source: Source) -> dict[str, Any] | None:
     proof = source.metadata.get("verification_artifact") or {}
     if not isinstance(proof, dict) or not proof.get("path"):
         return None
     try:
         path = Path(proof["path"])
-        content = path.read_bytes()
+        if path.stat().st_size > 10 * 1024 * 1024:
+            return None
+        with path.open("rb") as stream:
+            content = stream.read(10 * 1024 * 1024 + 1)
+        if len(content) > 10 * 1024 * 1024:
+            return None
         if hashlib.sha256(content).hexdigest() != proof.get("sha256"):
             return None
         data = json.loads(content)
+        signature = data.pop("signature", "")
+        from src.core.paths import get_paths
+        key_path = get_paths().cache_dir / "verification" / ".snapshot-key"
+        if not signature or not key_path.is_file() or not hmac.compare_digest(signature,
+                hmac.digest(key_path.read_bytes(), json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8"), "sha256").hex()):
+            return None
+        # ponytail: refresh after one day; signed historical bytes remain intact for audit.
+        verified_at = datetime.fromisoformat(data["verified_at"])
+        age = datetime.now(timezone.utc) - verified_at
+        if not timedelta(0) <= age <= timedelta(days=1):
+            return None
         if data.get("source_id") != source.id or normalize(data.get("title", "")) != normalize(source.title) or data.get("doi") != source.doi:
+            return None
+        if any(data.get(field) != getattr(source, field) for field in ("authors", "year", "venue")):
             return None
         matches = data.get("provider_records", [])
         from src.core.config import get_config
+        if data.get("verification_policy") != get_config().verification.model_dump(mode="json"):
+            return None
         threshold = get_config().verification.metadata_match_threshold
+        if not get_config().verification.enabled:
+            return None
+        if any(not get_config().tools[m["provider"]].enabled or str(get_config().tools[m["provider"]].status) in {"DISABLED", "FAILED", "PENDING_CONFIGURATION"}
+               for m in matches if m.get("provider") in get_config().tools):
+            return None
         if not data.get("verified_at") or not matches or not all(m.get("provider") and m.get("record", {}).get("title") and best_title_match(source.title, [m["record"]["title"]])[1] >= threshold for m in matches):
             return None
         if source.doi and not any(normalize_doi(m["record"].get("doi")) == normalize_doi(source.doi) for m in matches):
             return None
         return data
-    except (OSError, ValueError, TypeError, AttributeError):
+    except (OSError, ValueError, TypeError, AttributeError, KeyError):
         return None
 
 
@@ -55,6 +100,16 @@ def _headings(text):
         if marked or name in _SECTION_NAMES:
             headings.append((name, match.start(), match.end()))
     return headings
+
+
+def _section_end(text, headings, index):
+    def level(heading):
+        raw = text[heading[1]:heading[2]].strip()
+        markdown = re.match(r"^(#{1,6})\s", raw)
+        number = re.match(r"^(\d+(?:\.\d+)*)[.)]?\s", raw)
+        return len(markdown[1]) if markdown else len(number[1].split(".")) if number else 1
+    current = level(headings[index])
+    return next((h[1] for h in headings[index+1:] if level(h) <= current), len(text))
 
 
 def _primary_identity(source, text, declared_titles=None):
@@ -133,7 +188,7 @@ def resolve_location(text: str, pages: list, location: Mapping | EvidenceLocatio
         if len(found) != 1:
             raise ValueError(f"section {data['section']!r} is unavailable or ambiguous")
         i, heading = found[0]
-        ranges.append((heading[2], headings[i+1][1] if i+1 < len(headings) else len(text)))
+        ranges.append((heading[2], _section_end(text, headings, i)))
     if "char_start" in data or "char_end" in data:
         start, end = data.get("char_start"), data.get("char_end")
         if not isinstance(start, int) or isinstance(start, bool) or not isinstance(end, int) or isinstance(end, bool) or not 0 <= start < end <= len(text):
@@ -143,7 +198,7 @@ def resolve_location(text: str, pages: list, location: Mapping | EvidenceLocatio
     if start >= end:
         raise ValueError("declared coordinates do not intersect")
     return {"text": text[start:end], "start": start, "end": end,
-        "sections": [name for i,(name,_,body_start) in enumerate(headings) if max(start,body_start) < min(end, headings[i+1][1] if i+1<len(headings) else len(text))]}
+        "sections": [name for i,(name,_,body_start) in enumerate(headings) if max(start,body_start) < min(end, _section_end(text, headings, i))]}
 
 
 def _entry_location(entry):
@@ -182,7 +237,11 @@ def inspect_source(source: Source, root: Path | None = None) -> dict[str, Any]:
         result["findings"].append("source artifact is missing")
         return result
     try:
-        content = path.read_bytes()
+        from src.tools.pdf_parser import MAX_PDF_BYTES
+        with path.open("rb") as stream:
+            content = stream.read(MAX_PDF_BYTES + 1)
+        if len(content) > MAX_PDF_BYTES:
+            raise ValueError("source artifact exceeds byte limit")
         digest = hashlib.sha256(content).hexdigest()
         result["sha256"] = digest
         result["path"] = str(path.resolve())
@@ -197,6 +256,9 @@ def inspect_source(source: Source, root: Path | None = None) -> dict[str, Any]:
                 raise ValueError(parsed.error_message or "PDF is unreadable")
             text = parsed.full_text
             result["pages"] = [p.to_dict() for p in parsed.pages]
+            result["unreadable_pages"] = parsed.unreadable_pages
+            if parsed.unreadable_pages:
+                result["findings"].append(f"PDF pages require OCR or blank-page inspection: {parsed.unreadable_pages}")
         elif path.suffix.lower() in {".html", ".htm"}:
             from src.tools.retrieval import _TextExtractor
             parser = _TextExtractor()
@@ -223,7 +285,8 @@ def inspect_source(source: Source, root: Path | None = None) -> dict[str, Any]:
             coverage = {name for s in inspection["sections"] for name in located_excerpt(s, text, result["pages"])["sections"]}
             complete = inspection.get("document_kind") == "full_text" and inspection.get("scope") == "completeness" and len(coverage - {"abstract", "references", "bibliography"}) >= 3
         error_page = any(marker in norm for marker in ("access denied", "please log in", "sign in to access", "404 not found", "preview only"))
-        result["full_text"] = bool(complete and not error_page and result["identity"] and result["readable"])
+        result["full_text"] = bool(complete and not error_page and result["identity"] and result["readable"]
+                                   and not result.get("unreadable_pages"))
         if not result["full_text"]:
             result["findings"].append("artifact completeness has not been established")
         rights = stored_metadata(source)
@@ -241,10 +304,14 @@ def inspect_source(source: Source, root: Path | None = None) -> dict[str, Any]:
         discussion = bool(coverage & {"discussion", "pembahasan", "conclusion", "conclusions", "kesimpulan", "results and discussion"})
         distinct = len({normalize(s["excerpt"]) for s in examination.get("sections", [])}) if examined else 0
         result["fully_read"] = bool(result["full_text"] and examined and examination.get("scope") == "full" and methods and results and discussion and distinct >= 3)
+        # ponytail: compatibility flag denotes located section coverage, not comprehension of every page.
+        result["reading_assurance"] = "examined_required_sections" if result["fully_read"] else "not_established"
+        result["completeness_assurance"] = "section_structure_or_inspection_heuristic" if result["full_text"] else "not_established"
         if examination and not result["fully_read"]:
             result["findings"].append("full examination requires distinct located methods, results, and discussion/conclusion evidence")
         eligibility = source.metadata.get("eligibility_review") or {}
-        result["scientific_eligible"] = bool(result["full_text"] and _inspection_matches(eligibility, source, digest, text, result["pages"], result["findings"])
+        result["scientific_eligible"] = bool(result["full_text"] and source.metadata.get("publication_status") != "review_required"
+            and _inspection_matches(eligibility, source, digest, text, result["pages"], result["findings"])
             and eligibility.get("decision") == "eligible" and {s.get("criterion") for s in eligibility.get("sections", [])} >= {"construct", "population", "design"})
     except (OSError, ValueError, UnicodeError, TypeError, AttributeError) as exc:
         result["findings"].append(f"cannot process artifact: {exc}")

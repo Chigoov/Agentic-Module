@@ -148,9 +148,9 @@ class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
         self, request: ModelRequest, model: str, routing: Any
     ) -> ModelResponse:
         system_root = get_paths().system_root
-        base_url = (routing.router_base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+        base_url = (routing.router_base_url or routing.environment_value("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
         url = f"{base_url}/chat/completions"
-        api_key = routing.api_key or os.environ.get("OPENAI_API_KEY", "")
+        api_key = routing.api_key or routing.environment_value("OPENAI_API_KEY") or ""
 
         messages: list[dict[str, str]] = []
         if request.system_prompt:
@@ -189,6 +189,7 @@ class ModelRouterTool(BaseTool[ModelRequest, ModelResponse]):
                     capability=request.capability.value,
                     status="SUCCESS",
                     model_used=model,
+                    tokens_used=tokens_used,
                 )
                 return ModelResponse(
                     success=True,

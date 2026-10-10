@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import hashlib
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -40,6 +40,8 @@ from src.schemas.evidence import (
     EvidenceLocation,
     EvidenceRelationship,
     EvidenceStrength,
+    EvidenceType,
+    ReadingDepth,
     ExtractionMethod,
 )
 from src.schemas.outline import Outline
@@ -91,7 +93,8 @@ class DeepResearchRequest(AgentRequest):
     generate_docx: bool = True
     min_sources: int = 2
     max_sources: int = 10
-    max_retries: int = 3
+    # ponytail: retries belong to the bounded HTTP transport; no workflow replay.
+    max_retries: Literal[0] = 0
     command: str = "research"
     input_path: str | None = None
     quantitative_review: bool = False
@@ -134,22 +137,29 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
         )
 
     def _execute(self, request: DeepResearchRequest) -> DeepResearchResponse:
+        from src.runtime.execution import project_write_lock
+        ensure_workflow_ready(project=request.project)
+        with project_write_lock(request.project.directory):
+            return self._run(request)
+
+    def _run(self, request: DeepResearchRequest) -> DeepResearchResponse:
         resolve_source_paths(request.sources, request.project)
         options = review_options(request.model_dump(exclude_unset=True), request.project)
         for name, value in options.items():
             setattr(request, name, value)
         request.project.research_options.update(options)
-        write_json(request.project.directory / "workflow_options.json", options, root=request.project.directory, overwrite=True)
-        write_json(request.project.directory / "project.json", request.project.model_dump(mode="json"), root=request.project.directory, overwrite=True)
         stages: list[str] = ["deep_plan"]
         review_queue = ReviewQueue.load(request.project.artifact_path(ProjectArtifact.REVIEW_QUEUE))
         providers = request.providers or default_discovery_providers()
         required_tools = [] if request.sources else providers
-        required_tools.extend(getattr(request.verification_engine, "_providers", ()))
+        required_tools.extend(p for p in getattr(request.verification_engine, "_providers", ())
+                              if getattr(p, "is_available", lambda: True)())
         review_template = None
         if request.quantitative_review or request.quantitative_review_records:
             review_template = resolve_standard_workbook_template(request.quantitative_review_template)
         readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
+        write_json(request.project.directory / "workflow_options.json", options, root=request.project.directory, overwrite=True)
+        write_json(request.project.directory / "project.json", request.project.model_dump(mode="json"), root=request.project.directory, overwrite=True)
         if review_template:
             readiness["quantitative_review_template"] = str(review_template)
 
@@ -341,16 +351,19 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                         quote_verified=False,
                         extraction_method=ExtractionMethod.VERBATIM_ABSTRACT if loc.locator == "abstract" else ExtractionMethod.VERBATIM_FULLTEXT,
                         location=loc,
-                        relationship=EvidenceRelationship.SUPPORTS,
-                        strength=EvidenceStrength.DEFINITIVE,
-                        confidence=1.0,
+                        # ponytail: located sentences are candidates; content assessment must promote them.
+                        relationship=EvidenceRelationship.PARTIALLY_SUPPORTS,
+                        evidence_type=EvidenceType.BACKGROUND,
+                        reading_depth=ReadingDepth.ABSTRACT_ONLY if loc.locator == "abstract" else ReadingDepth.FULL_TEXT,
+                        strength=EvidenceStrength.WEAK,
+                        confidence=0.2,
                     )
                     from src.tools.source_content import recheck_quote
                     recheck_quote(s, ev_item, request.project.directory)
                     clm_item = Claim(
                         id=clm_id,
                         claim_text=sent,
-                        status=ClaimStatus.SUPPORTED,
+                        status=ClaimStatus.PROPOSED,
                         importance=ClaimImportance.MEDIUM,
                         required_source_count=1,
                         qualifier="berdasarkan temuan literatur awal",
@@ -359,6 +372,9 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                     )
                     evidence_list.append(ev_item)
                     claims_list.append(clm_item)
+                    review_queue.add(ReviewItem(item_type="claim", item_id=clm_id, severity="HIGH",
+                        reason="Automatically extracted candidate requires relevance and methods/results assessment",
+                        recommended_action="Classify the evidence and assess its support before finalization"))
 
         stages.append("evidence_extraction")
         record_progress("evidence_extraction", "completed", evidence_count=len(evidence_list))

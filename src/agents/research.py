@@ -244,7 +244,8 @@ class RetrievalAgent(BaseAgent[RetrievalAgentRequest, RetrievalAgentResponse]):
             elif not response.success:
                 # If direct download failed, try regular abstract/url retrieval as fallback
                 if direct_dl:
-                    fallback_resp = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=False))
+                    fallback_resp = tool.execute(RetrievalRequest(project=request.project, source=source,
+                        direct_download=False, allow_direct_download=False))
                     if fallback_resp.success and fallback_resp.parsed_text:
                         parsed[source.id] = fallback_resp.parsed_text
                         continue

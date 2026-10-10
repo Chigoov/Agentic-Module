@@ -25,7 +25,7 @@ from typing import Any, Literal, Mapping
 
 import yaml
 from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
 
 from src.core.errors import ConfigurationError
 from src.core.paths import SystemPaths, get_paths
@@ -62,6 +62,10 @@ class _Section(BaseModel):
     """Base for configuration sections: unknown keys are rejected loudly."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+    _dotenv: dict[str, str] = PrivateAttr(default_factory=dict)
+
+    def environment_value(self, name: str) -> str | None:
+        return os.environ.get(name, self._dotenv.get(name))
 
 
 class SystemSection(_Section):
@@ -167,7 +171,7 @@ class ModelRoutingSection(_Section):
     @property
     def api_key(self) -> str | None:
         """Read the key from the environment. Secrets are never stored in config."""
-        return os.environ.get(self.api_key_env) if self.api_key_env else None
+        return self.environment_value(self.api_key_env) if self.api_key_env else None
 
 
 class ToolSection(_Section):
@@ -186,11 +190,11 @@ class ToolSection(_Section):
 
     @property
     def api_key(self) -> str | None:
-        return os.environ.get(self.api_key_env) if self.api_key_env else None
+        return self.environment_value(self.api_key_env) if self.api_key_env else None
 
     @property
     def contact_email(self) -> str | None:
-        return os.environ.get(self.contact_email_env) if self.contact_email_env else None
+        return self.environment_value(self.contact_email_env) if self.contact_email_env else None
 
 
 class SystemConfig(_Section):
@@ -306,6 +310,7 @@ def load_config(
     resolved_paths = paths or get_paths()
     data: dict[str, Any] = {}
     sources: list[str] = []
+    dotenv: dict[str, str] = {}
 
     for candidate in (
         resolved_paths.system_config_file,
@@ -319,7 +324,8 @@ def load_config(
         dotenv_path = resolved_paths.dotenv_file
         environ: dict[str, str] = {}
         if dotenv_path.is_file():
-            environ.update({k: v for k, v in dotenv_values(dotenv_path).items() if v is not None})
+            dotenv = {k: v for k, v in dotenv_values(dotenv_path).items() if v is not None}
+            environ.update(dotenv)
             sources.append(resolved_paths.relative(dotenv_path))
         environ.update(os.environ)
         env_layer = _env_overlay(environ)
@@ -334,7 +340,10 @@ def load_config(
     data["sources"] = tuple(sources)
 
     try:
-        return SystemConfig.model_validate(data)
+        config = SystemConfig.model_validate(data)
+        for section in [config.model_routing, *config.tools.values()]:
+            section._dotenv = dotenv
+        return config
     except ValidationError as exc:
         raise ConfigurationError(
             "System configuration failed validation",

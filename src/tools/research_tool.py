@@ -120,8 +120,20 @@ class ResearchTool(BaseTool[ResearchRequest, ResearchResponse]):
     _integration_verified: ClassVar[bool] = False
 
     # ------------------------------------------------------------------ status
+    def _endpoint(self, default: str, suffix: str = "") -> str:
+        from src.core.config import get_config
+        base = get_config().tool(self.name).base_url
+        return base.rstrip("/") + suffix if base else default
+
     def status(self) -> IntegrationStatus:
         """Report integration status: VERIFIED after proven run, CONFIGURED if implemented."""
+        from src.core.config import get_config
+        cfg = get_config().tools.get(self.name)
+        if cfg is not None:
+            if not cfg.enabled or cfg.status == IntegrationStatus.DISABLED:
+                return IntegrationStatus.DISABLED
+            if cfg.status in {IntegrationStatus.FAILED, IntegrationStatus.PENDING_CONFIGURATION}:
+                return cfg.status
         if getattr(type(self), "_integration_verified", False):
             return IntegrationStatus.VERIFIED
         if type(self)._search is not ResearchTool._search:

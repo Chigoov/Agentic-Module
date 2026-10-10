@@ -30,7 +30,8 @@ class OptimizationWorkflow(BaseAgent[OptimizationRequest, OptimizationResponse])
     def _execute(self, request: OptimizationRequest) -> OptimizationResponse:
         telemetry = read_jsonl(request.telemetry_path) if request.telemetry_path else []
         total_tokens = sum(int(item.get("tokens_used") or 0) for item in telemetry)
-        failed_runs = [item for item in telemetry if item.get("status") not in {None, "ok", "success", "VERIFIED"}]
+        failed_runs = [item for item in telemetry if item.get("status") is not None
+                       and str(item["status"]).casefold() not in {"ok", "success", "verified"}]
         report: dict[str, object] = {
             "telemetry_records": len(telemetry),
             "total_tokens": total_tokens,

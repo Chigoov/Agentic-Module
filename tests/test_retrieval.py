@@ -47,17 +47,17 @@ def test_retrieves_and_parses_html_url(tmp_path: Path) -> None:
     assert Path(response.document_path).is_file()
 
 
-def test_pdf_is_saved_without_fake_text_parse(tmp_path: Path) -> None:
+def test_generic_pdf_cannot_bypass_rights_or_claim_success(tmp_path: Path) -> None:
     project = _project(tmp_path)
     source = Source(title="Paper", url="https://example.test/paper.pdf")
     tool = RetrievalTool(
         fetcher=lambda url, timeout: RetrievedPayload(b"%PDF-1.4", "application/pdf", url)
     )
     response = tool.execute(RetrievalRequest(project=project, source=source))
-    assert response.success is True
+    assert response.success is False
     assert response.parsed_text is None
-    assert response.metadata["content_parsed"] is False
-    assert Path(response.document_path).read_bytes() == b"%PDF-1.4"
+    assert response.error_code == "DOWNLOAD_RIGHTS_UNCLEAR"
+    assert response.document_path is None
 
 
 def test_retrieval_fails_without_content_pointer(tmp_path: Path) -> None:

@@ -221,6 +221,14 @@ class ProjectManager:
         project_dir = workspace_path / name
         manifest_file = project_dir / PROJECT_MANIFEST_FILENAME
 
+        return self.load_manifest(manifest_file)
+
+    def load_manifest(self, manifest_file: Path | str, *, allow_external: bool = False) -> Project:
+        """Rebase to the actual directory; external paths require explicit CLI intent."""
+        manifest_file = Path(manifest_file).resolve()
+        project_dir = manifest_file.parent
+        workspace, name = project_dir.parent.name, project_dir.name
+
         if not manifest_file.is_file():
             raise ProjectError(
                 f"Project manifest not found: {manifest_file}",
@@ -249,7 +257,7 @@ class ProjectManager:
                 name=name,
                 path=str(actual_dir),
             )
-        if not self.paths.is_inside_workspace(actual_dir):
+        if not allow_external and not self.paths.is_inside_workspace(actual_dir):
             raise ProjectError(
                 f"Project directory escapes workspace root: {actual_dir}",
                 workspace=workspace,

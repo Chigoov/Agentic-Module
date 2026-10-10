@@ -66,6 +66,8 @@ def sample_doab_payload() -> list[dict]:
     ]
 
 
+pytestmark = pytest.mark.usefixtures("enabled_research_tools")
+
 def test_doab_item_to_source_mapping(sample_doab_payload: list[dict]) -> None:
     tool = DOABTool()
     source = tool._item_to_source(sample_doab_payload[0])

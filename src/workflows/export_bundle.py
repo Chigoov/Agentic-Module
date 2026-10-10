@@ -73,6 +73,12 @@ def export_bundle(
             "error": f"Project directory does not exist: {project_dir}",
         }
 
+    from src.runtime.execution import project_write_lock
+    with project_write_lock(resolved_proj):
+        return _export_bundle_locked(resolved_proj, run_id=run_id, include_failed=include_failed)
+
+
+def _export_bundle_locked(resolved_proj: Path, *, run_id: str | None, include_failed: bool) -> dict[str, Any]:
     runs_dir = resolved_proj / "runs"
     if not runs_dir.exists() or not runs_dir.is_dir():
         return {

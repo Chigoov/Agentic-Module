@@ -11,9 +11,12 @@ tests/test_workflow_audit_repairs.py. Jangan gunakan fixture sebagai artikel nya
 - Metadata yang tidak tersedia tetap null. Sumber baru DISCOVERED; APPROVED
   dari input bukan bukti.
 - metadata.verification_artifact berisi path dan SHA-256 snapshot JSON dari
-  verification engine. Snapshot mengikat source_id, title, doi, verified_at,
-  provider_records (provider dan record). Gunakan snapshot tersimpan bila
-  identitas dan hash valid; internet ulang tidak wajib untuk setiap run.
+  verification engine. Snapshot mengikat source_id, title, doi, authors, year,
+  venue, verified_at, verification_policy, dan provider_records (provider dan
+  record), dengan signature lokal yang dibuat engine. Hash dari input saja
+  tidak membuktikan asal. Snapshot yang tidak ditandatangani, lebih dari satu
+  hari, atau berbeda identitas/kebijakan harus diverifikasi ulang. Setiap
+  pemanggilan verify melakukan refresh; snapshot historis tetap dipertahankan.
   Jangan menulis provider atau hasil verifikasi rekaan untuk penelitian nyata.
 - retrieval_path menunjuk PDF, HTML, atau ekstraksi JSON/text nyata.
   metadata.retrieval memuat sha256, retrieved_at, retrieval_method, final_url
@@ -29,7 +32,10 @@ examination, eligibility_review, content_inspection, rights_inspection berada
 di source.metadata, mengikat source_id, artifact_sha256, reviewer, reviewed_at,
 serta sections berisi excerpt dan lokasi nyata. Examination scope: full
 memerlukan kutipan berbeda yang mencakup metode, hasil, dan pembahasan/kesimpulan
-pada artefak yang sama. Tiga string locator tidak cukup. Eligibility memakai
+pada artefak yang sama. Label kompatibilitas fully_read berarti examined required
+sections, bukan seluruh halaman telah dipahami. full_text menggunakan heuristik
+struktur/cakupan; PDF dengan halaman kosong/tidak terbaca memerlukan pemeriksaan.
+Tiga string locator tidak cukup. Eligibility memakai
 decision: eligible serta criterion construct, population, design berlokasi.
 Rights inspection legal_free: true mengacu pada bukti lisensi/akses nyata.
 Content inspection scope: completeness, document_kind: full_text untuk layout

@@ -172,6 +172,7 @@ class AcademicRunAudit:
 
         run_dir = project.run_path(run_id)
         run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / ".active").write_text(started_at, encoding="utf-8")
 
         audit = cls(
             project=project,
@@ -428,4 +429,5 @@ class AcademicRunAudit:
             overwrite=True,
         )
 
+        (self.run_dir / ".active").unlink(missing_ok=True)
         return run_summary

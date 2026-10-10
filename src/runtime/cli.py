@@ -14,6 +14,7 @@ from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, Ta
 from src.core.config import get_config
 from src.core.errors import PathSafetyError
 from src.core.paths import PathResolutionError, get_paths
+from src.core.project_manager import ProjectManager
 from src.core.storage import ensure_within, write_json
 from src.runtime.bootstrap import bootstrap, health_check
 from src.runtime.execution import create_execution_project, ensure_workflow_ready
@@ -89,7 +90,7 @@ def _project_from_payload(payload: dict[str, Any], *, command: str) -> Project:
         manifest = project.directory / "project.json"
         if not manifest.is_file():
             raise ValueError("Resume requires the actual existing project manifest")
-        return Project.model_validate(_read_json(str(manifest)))
+        return ProjectManager().load_manifest(manifest, allow_external=True)
     return create_execution_project(
         user_request=project.user_request or project.title or project.name,
         command=command,
@@ -275,6 +276,16 @@ def _resolve_project_dir(args: argparse.Namespace) -> Path | None:
 
 
 def _cmd_runs(args: argparse.Namespace) -> int:
+    if getattr(args, "prune", False):
+        from src.runtime.execution import project_write_lock
+        target = _resolve_project_dir(args)
+        if target and target.exists():
+            with project_write_lock(target.parent if target.name == "runs" else target):
+                return _runs_unlocked(args)
+    return _runs_unlocked(args)
+
+
+def _runs_unlocked(args: argparse.Namespace) -> int:
     target_path = _resolve_project_dir(args)
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory with runs/ not found"}), file=sys.stderr)
@@ -312,6 +323,9 @@ def _cmd_runs(args: argparse.Namespace) -> int:
         if summary_file.exists():
             try:
                 summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
+                if not isinstance(summary_data, dict):
+                    summary_data = None
+                    raise ValueError("Run summary must be an object")
                 started_at = str(summary_data.get("started_at") or d.name)
             except Exception:
                 pass
@@ -328,7 +342,13 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             return 1
 
         total_before = len(runs_with_meta)
-        to_delete = runs_with_meta[args.keep:]
+        # ponytail: retain unknown/incomplete runs; only finished audit runs are eligible.
+        terminal = [item for item in runs_with_meta
+                    if item[2] and item[0].name.startswith("run_")
+                    and item[2].get("run_id") == item[0].name
+                    and item[2].get("finished_at") and isinstance(item[2].get("success"), bool)
+                    and not item[0].is_symlink() and not (item[0] / ".active").exists()]
+        to_delete = terminal[args.keep:]
         deleted_ids: list[str] = []
 
         for r_dir, _, _ in to_delete:
@@ -412,6 +432,16 @@ def _cmd_export_bundle(args: argparse.Namespace) -> int:
 
 
 def _cmd_review_queue(args: argparse.Namespace) -> int:
+    if getattr(args, "resolve", None):
+        from src.runtime.execution import project_write_lock
+        target = _resolve_project_dir(args)
+        if target and target.exists():
+            with project_write_lock(target):
+                return _review_queue_unlocked(args)
+    return _review_queue_unlocked(args)
+
+
+def _review_queue_unlocked(args: argparse.Namespace) -> int:
     target_path = _resolve_project_dir(args)
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
@@ -430,10 +460,6 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
         if not matched:
             print(_json({"success": False, "error": f"Review item '{target_id}' not found in review queue"}), file=sys.stderr)
             return 1
-
-        matched.status = "RESOLVED"
-        matched.resolution_notes = getattr(args, "notes", None) or getattr(args, "reason", None) or "Resolved by reviewer"
-        queue.save(queue_path, root=target_path)
 
         # If this review is related to a claim, build/update a SemanticReview
         created_review = None
@@ -505,7 +531,7 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
             if claim_id and evd_id and src_id and excerpt:
                 from src.schemas.claim import SemanticDecision, SemanticReview
                 decision_str = getattr(args, "decision", "SUPPORTED") or "SUPPORTED"
-                decision = SemanticDecision.SUPPORTED if decision_str.upper() == "SUPPORTED" else SemanticDecision.PARTIALLY_SUPPORTED
+                decision = SemanticDecision(decision_str.upper())
                 sr = SemanticReview(
                     claim_id=claim_id,
                     decision=decision,
@@ -521,15 +547,23 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
                 sem_path = target_path / ProjectArtifact.SEMANTIC_REVIEWS.value
                 existing_sem = []
                 if sem_path.is_file():
-                    try:
-                        existing_sem = _read_json(str(sem_path))
-                        if not isinstance(existing_sem, list):
-                            existing_sem = []
-                    except Exception:
-                        existing_sem = []
+                    existing_sem = _read_json(str(sem_path))
+                    if not isinstance(existing_sem, list):
+                        raise ValueError("Existing semantic reviews must be a JSON list")
+                    for review in existing_sem:
+                        SemanticReview.model_validate(review)
                 existing_sem = [r for r in existing_sem if r.get("claim_id") != claim_id]
                 existing_sem.append(created_review)
                 write_json(sem_path, existing_sem, root=target_path, overwrite=True)
+
+            if created_review is None:
+                print(_json({"success": False, "error": "Cannot resolve claim review without located evidence"}), file=sys.stderr)
+                return 1
+
+        # Assessment is durable before the blocker is cleared; failure remains fail-closed.
+        matched.status = "RESOLVED"
+        matched.resolution_notes = getattr(args, "notes", None) or getattr(args, "reason", None) or "Resolved by reviewer"
+        queue.save(queue_path, root=target_path)
 
         print(_json({
             "success": True,
@@ -557,6 +591,15 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(args: argparse.Namespace) -> int:
+    from src.runtime.execution import project_write_lock
+    target = _resolve_project_dir(args)
+    if target and target.is_dir():
+        with project_write_lock(target):
+            return _finalize_unlocked(args)
+    return _finalize_unlocked(args)
+
+
+def _finalize_unlocked(args: argparse.Namespace) -> int:
     target_path = _resolve_project_dir(args)
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
@@ -578,7 +621,7 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
         return 1
 
     manifest = target_path / "project.json"
-    project = Project.model_validate(_read_json(str(manifest))) if manifest.is_file() else Project(
+    project = ProjectManager().load_manifest(manifest, allow_external=True) if manifest.is_file() else Project(
         name=target_path.name, workspace=target_path.parent.name, path=str(target_path), title=target_path.name)
     options_path = target_path / "workflow_options.json"
     options = _read_json(str(options_path)) if options_path.is_file() else project.research_options
@@ -640,12 +683,10 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
     semantic_reviews = []
     sem_path = target_path / ProjectArtifact.SEMANTIC_REVIEWS.value
     if sem_path.is_file():
-        try:
-            raw_sem = _read_json(str(sem_path))
-            if isinstance(raw_sem, list):
-                semantic_reviews = [SemanticReview.model_validate(r) for r in raw_sem]
-        except Exception:
-            pass
+        raw_sem = _read_json(str(sem_path))
+        if not isinstance(raw_sem, list):
+            raise ValueError("semantic_reviews.json must contain a list; existing history is preserved")
+        semantic_reviews = [SemanticReview.model_validate(r) for r in raw_sem]
 
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
