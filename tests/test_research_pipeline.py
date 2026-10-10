@@ -109,11 +109,12 @@ def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path, synthetic_v
 
     # Check progress logging was performed
     prog = read_progress()
-    stages_logged = {p["stage"] for p in prog}
+    stages_logged = {p["stage"] for p in prog if p.get("project_path") == str(project.directory)}
     assert "task_analysis" in stages_logged
     assert "discovery" in stages_logged
     assert "retrieval" in stages_logged
-    assert "writing" in stages_logged
+    assert "human_review" in stages_logged
+    assert "writing" not in stages_logged
 
 
 def test_research_pipeline_halts_on_critical_human_review(tmp_path: Path) -> None:
@@ -826,7 +827,7 @@ def test_property_7_consequential_claim_fact_audit_gate_and_publication_halting(
     input_payload = {
         "project": {
             "name": "cli_prop7_proj",
-            "workspace": "tmp",
+            "workspace": "TUGAS 1",
             "path": str(tmp_path / "cli_prop7_proj"),
             "title": "CLI Prop 7 Test",
         },
@@ -842,7 +843,18 @@ def test_property_7_consequential_claim_fact_audit_gate_and_publication_halting(
     from src.tools.verification_tool import VerificationEngine
     monkeypatch.setattr("src.runtime.cli.VerificationEngine", lambda: VerificationEngine(providers=[]))
 
-    cli_exit_code = main(["research", "--input-json", str(payload_file)])
+    from src.core.paths import reset_paths_cache
+    from src.core.config import reset_config_cache
+    workspace = tmp_path / "cli_workspaces"
+    (workspace / "TUGAS 1").mkdir(parents=True)
+    with monkeypatch.context() as local:
+        local.setenv("AUTONOMI_SYSTEM_ROOT", str(Path(__file__).resolve().parents[1]))
+        local.setenv("AUTONOMI_WORKSPACE_ROOT", str(workspace))
+        reset_paths_cache(); reset_config_cache()
+        try:
+            cli_exit_code = main(["research", "--input-json", str(payload_file)])
+        finally:
+            reset_paths_cache(); reset_config_cache()
     assert cli_exit_code == 1, "CLI deep research command must exit with code 1 on fact audit failure"
 
 

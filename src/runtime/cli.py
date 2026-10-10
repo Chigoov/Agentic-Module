@@ -276,17 +276,16 @@ def _resolve_project_dir(args: argparse.Namespace) -> Path | None:
 
 
 def _cmd_runs(args: argparse.Namespace) -> int:
+    target = _resolve_project_dir(args)
     if getattr(args, "prune", False):
         from src.runtime.execution import project_write_lock
-        target = _resolve_project_dir(args)
         if target and target.exists():
             with project_write_lock(target.parent if target.name == "runs" else target):
-                return _runs_unlocked(args)
-    return _runs_unlocked(args)
+                return _runs_unlocked(args, target)
+    return _runs_unlocked(args, target)
 
 
-def _runs_unlocked(args: argparse.Namespace) -> int:
-    target_path = _resolve_project_dir(args)
+def _runs_unlocked(args: argparse.Namespace, target_path: Path | None) -> int:
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory with runs/ not found"}), file=sys.stderr)
         return 1
@@ -432,17 +431,16 @@ def _cmd_export_bundle(args: argparse.Namespace) -> int:
 
 
 def _cmd_review_queue(args: argparse.Namespace) -> int:
+    target = _resolve_project_dir(args)
     if getattr(args, "resolve", None):
         from src.runtime.execution import project_write_lock
-        target = _resolve_project_dir(args)
         if target and target.exists():
             with project_write_lock(target):
-                return _review_queue_unlocked(args)
-    return _review_queue_unlocked(args)
+                return _review_queue_unlocked(args, target)
+    return _review_queue_unlocked(args, target)
 
 
-def _review_queue_unlocked(args: argparse.Namespace) -> int:
-    target_path = _resolve_project_dir(args)
+def _review_queue_unlocked(args: argparse.Namespace, target_path: Path | None) -> int:
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
         return 1
@@ -455,6 +453,7 @@ def _review_queue_unlocked(args: argparse.Namespace) -> int:
 
     # Resolution mode
     if getattr(args, "resolve", None):
+        existing_reviews = SemanticReview.load_history(target_path / ProjectArtifact.SEMANTIC_REVIEWS.value)
         target_id = args.resolve.strip()
         matched = next((i for i in queue.items if i.id == target_id or i.id.endswith(target_id) or i.item_id == target_id or (target_id in i.reason)), None)
         if not matched:
@@ -529,7 +528,7 @@ def _review_queue_unlocked(args: argparse.Namespace) -> int:
                                 pass
 
             if claim_id and evd_id and src_id and excerpt:
-                from src.schemas.claim import SemanticDecision, SemanticReview
+                from src.schemas.claim import SemanticDecision
                 decision_str = getattr(args, "decision", "SUPPORTED") or "SUPPORTED"
                 decision = SemanticDecision(decision_str.upper())
                 sr = SemanticReview(
@@ -545,14 +544,7 @@ def _review_queue_unlocked(args: argparse.Namespace) -> int:
                 )
                 created_review = sr.model_dump(mode="json")
                 sem_path = target_path / ProjectArtifact.SEMANTIC_REVIEWS.value
-                existing_sem = []
-                if sem_path.is_file():
-                    existing_sem = _read_json(str(sem_path))
-                    if not isinstance(existing_sem, list):
-                        raise ValueError("Existing semantic reviews must be a JSON list")
-                    for review in existing_sem:
-                        SemanticReview.model_validate(review)
-                existing_sem = [r for r in existing_sem if r.get("claim_id") != claim_id]
+                existing_sem = [r.model_dump(mode="json") for r in existing_reviews if r.claim_id != claim_id]
                 existing_sem.append(created_review)
                 write_json(sem_path, existing_sem, root=target_path, overwrite=True)
 
@@ -595,12 +587,11 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
     target = _resolve_project_dir(args)
     if target and target.is_dir():
         with project_write_lock(target):
-            return _finalize_unlocked(args)
-    return _finalize_unlocked(args)
+            return _finalize_unlocked(args, target)
+    return _finalize_unlocked(args, target)
 
 
-def _finalize_unlocked(args: argparse.Namespace) -> int:
-    target_path = _resolve_project_dir(args)
+def _finalize_unlocked(args: argparse.Namespace, target_path: Path | None) -> int:
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
         return 1
@@ -680,13 +671,8 @@ def _finalize_unlocked(args: argparse.Namespace) -> int:
                         outline = Outline.model_validate(raw_snap)
 
     # Semantic reviews loaded from project semantic_reviews.json
-    semantic_reviews = []
     sem_path = target_path / ProjectArtifact.SEMANTIC_REVIEWS.value
-    if sem_path.is_file():
-        raw_sem = _read_json(str(sem_path))
-        if not isinstance(raw_sem, list):
-            raise ValueError("semantic_reviews.json must contain a list; existing history is preserved")
-        semantic_reviews = [SemanticReview.model_validate(r) for r in raw_sem]
+    semantic_reviews = SemanticReview.load_history(sem_path)
 
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(

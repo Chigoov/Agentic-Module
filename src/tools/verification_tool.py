@@ -98,7 +98,7 @@ class VerificationEngine:
     # ------------------------------------------------------------------ public
     def verify(self, source: Source) -> VerificationResult:
         """Produce a verification report and recommended state for ``source``."""
-        # ponytail: every verify refreshes under current provider policy; historical reports are audit inputs.
+        # ponytail: engine settings are fixed at construction; consumers enforce current policy.
         report = VerificationReport(source_id=source.id, provenance=Provenance(origin="verification_engine"))
         if not self._enabled:
             self._archive_verification(source)
@@ -122,7 +122,8 @@ class VerificationEngine:
         if corroborations and report.overall_status in {SourceState.METADATA_VERIFIED, SourceState.DOI_VERIFIED, SourceState.PUBLISHER_VERIFIED}:
             snapshot = {"source_id": source.id, "title": source.title, "doi": source.doi,
                 "authors": source.authors, "year": source.year, "venue": source.venue,
-                "verification_policy": get_config().verification.model_dump(mode="json"),
+                "verification_policy": {"enabled": self._enabled, "metadata_match_threshold": self._match_threshold,
+                                        "min_metadata_providers": self._min_providers},
                 "verified_at": datetime.now(timezone.utc).isoformat(), "report": report.to_dict(),
                 "provider_records": [{"provider": name, "record": record.model_dump(mode="json")} for name, record, _ in corroborations]}
             snapshot = sign_verification_snapshot(snapshot)

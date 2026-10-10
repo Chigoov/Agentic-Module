@@ -143,6 +143,7 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
             return self._run(request)
 
     def _run(self, request: DeepResearchRequest) -> DeepResearchResponse:
+        persisted_reviews = SemanticReview.load_history(request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS))
         resolve_source_paths(request.sources, request.project)
         options = review_options(request.model_dump(exclude_unset=True), request.project)
         for name, value in options.items():
@@ -354,12 +355,17 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
                         # ponytail: located sentences are candidates; content assessment must promote them.
                         relationship=EvidenceRelationship.PARTIALLY_SUPPORTS,
                         evidence_type=EvidenceType.BACKGROUND,
-                        reading_depth=ReadingDepth.ABSTRACT_ONLY if loc.locator == "abstract" else ReadingDepth.FULL_TEXT,
+                        reading_depth=ReadingDepth.ABSTRACT_ONLY if loc.locator == "abstract" else ReadingDepth.UNAVAILABLE,
                         strength=EvidenceStrength.WEAK,
                         confidence=0.2,
                     )
                     from src.tools.source_content import recheck_quote
-                    recheck_quote(s, ev_item, request.project.directory)
+                    if not recheck_quote(s, ev_item, request.project.directory):
+                        ev_item.reading_depth = ReadingDepth.UNAVAILABLE
+                    elif loc.locator != "abstract":
+                        from src.tools.source_content import inspect_source
+                        if inspect_source(s, request.project.directory)["fully_read"]:
+                            ev_item.reading_depth = ReadingDepth.FULL_TEXT
                     clm_item = Claim(
                         id=clm_id,
                         claim_text=sent,
@@ -522,18 +528,9 @@ class DeepResearchWorkflow(BaseAgent[DeepResearchRequest, DeepResearchResponse])
 
         # Load persisted semantic reviews if available in project
         semantic_reviews = list(request.semantic_reviews)
-        sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
-        if sem_path.is_file():
-            try:
-                from src.core.storage import read_json
-                raw_sem = read_json(sem_path)
-                if isinstance(raw_sem, list):
-                    for item in raw_sem:
-                        sr = SemanticReview.model_validate(item)
-                        if not any(r.claim_id == sr.claim_id for r in semantic_reviews):
-                            semantic_reviews.append(sr)
-            except Exception:
-                pass
+        for sr in persisted_reviews:
+            if not any(r.claim_id == sr.claim_id for r in semantic_reviews):
+                semantic_reviews.append(sr)
 
         academic = AcademicWritingWorkflow().execute(
             AcademicWritingRequest(

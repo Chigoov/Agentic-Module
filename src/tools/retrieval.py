@@ -205,8 +205,8 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
 
         # Fallback to abstract if available
         if source.abstract:
+            parsed_text = self._parse_document(source, RetrievedPayload(source.abstract.encode("utf-8")), "abstract")
             path = self._write_text(request.project, source, "abstract", source.abstract)
-            parsed_text = source.abstract
             method = "abstract"
             if source.reading_depth == ReadingDepth.UNAVAILABLE:
                 source.update_reading_depth(ReadingDepth.ABSTRACT_ONLY, reason="Persisted abstract content", actor=self.name)
@@ -241,15 +241,10 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                     recommended_action="Confirm license and access rights", severity="HIGH")
 
             suffix = "pdf" if payload.content.startswith(b"%PDF") else self._suffix(payload.content_type, source.url)
-            if suffix == "pdf":
-                parsed = PDFParserTool().parse(payload.content)
-                if not parsed.success:
-                    return RetrievalResponse.failure(error_code="PDF_PARSE_FAILED", error_message=parsed.error_message, source=source)
-                parsed_text = parsed.full_text or None
-                source.metadata["pdf_pages"] = [p.to_dict() for p in parsed.pages]
-                source.metadata["unreadable_pages"] = parsed.unreadable_pages
-            else:
-                parsed_text = self._parse(payload)
+            try:
+                parsed_text = self._parse_document(source, payload, suffix)
+            except ValueError as exc:
+                return RetrievalResponse.failure(error_code="PDF_PARSE_FAILED", error_message=str(exc), source=source)
             sha256_hash = hashlib.sha256(payload.content).hexdigest()
             path = self._write_bytes_with_safety(
                 request.project,
@@ -260,10 +255,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
                 allow_overwrite=request.allow_overwrite,
             )
             method = "url"
-            if payload.final_url and payload.final_url != source.url:
-                source.metadata["retrieval_final_url"] = payload.final_url
-            if parsed_text:
-                source.metadata["parsed_readable"] = True
+            source.metadata["retrieval_final_url"] = payload.final_url or source.url
         else:
             source.retrieval_status = RetrievalStatus.FAILED
             source.record_error(code="NO_RETRIEVABLE_CONTENT", message="Source has neither abstract nor URL")
@@ -441,26 +433,10 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
         suffix = "pdf" if payload.content.startswith(b"%PDF") else self._suffix(payload.content_type, target_url)
 
         # 5. Parse document (page-aware for PDF)
-        parsed_text = None
-        pdf_pages: list[dict] = []
-        if suffix == "pdf" or "pdf" in payload.content_type.lower():
-            pdf_res = PDFParserTool().parse(payload.content)
-            if not pdf_res.success:
-                source.retrieval_status = RetrievalStatus.FAILED
-                return RetrievalResponse.failure(error_code="PDF_PARSE_FAILED", error_message=pdf_res.error_message, source=source)
-            source.metadata["unreadable_pages"] = pdf_res.unreadable_pages
-            if pdf_res.ocr_required:
-                source.add_verification_note(f"OCR_REQUIRED_OR_BLANK: Pages {pdf_res.unreadable_pages} require inspection")
-            if pdf_res.success and pdf_res.has_text_layer and pdf_res.full_text:
-                parsed_text = pdf_res.full_text
-                pdf_pages = [p.to_dict() for p in pdf_res.pages]
-                source.metadata["parsed_readable"] = True
-            else:
-                source.add_verification_note("OCR_REQUIRED: Downloaded PDF has no extractable text layer")
-        else:
-            parsed_text = self._parse(payload)
-            if parsed_text:
-                source.metadata["parsed_readable"] = True
+        try:
+            parsed_text = self._parse_document(source, payload, suffix)
+        except ValueError as exc:
+            return RetrievalResponse.failure(error_code="PDF_PARSE_FAILED", error_message=str(exc), source=source)
 
         # 6. Record retrieval metadata
         path = self._write_bytes_with_safety(request.project, source, suffix, payload.content,
@@ -476,9 +452,7 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             "landing_url": source.landing_url or source.url,
             "download_url": target_url,
         }
-        if pdf_pages:
-            retrieval_meta["pdf_page_count"] = len(pdf_pages)
-            source.metadata["pdf_pages"] = pdf_pages
+        retrieval_meta["pdf_page_count"] = len(source.metadata["pdf_pages"])
 
         source.metadata["retrieval"] = retrieval_meta
         source.metadata["file_path"] = f"source_documents/{Path(path).name}"
@@ -510,12 +484,13 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
 
     @staticmethod
     def _check_article_content(request):
-        if request.source.source_type in {SourceType.BOOK, SourceType.BOOK_CHAPTER, SourceType.WEB_RESOURCE}:
+        if request.source.source_type in {SourceType.BOOK, SourceType.BOOK_CHAPTER}:
             source = request.source
             allowed = (source.access_mode in {AccessMode.OPEN_DOWNLOAD, AccessMode.READ_ONLINE}
                 and source.rights_status in {RightsStatus.PUBLIC_DOMAIN, RightsStatus.OPEN_LICENSE, RightsStatus.PROVIDER_STATED_FREE}
                 and Path(source.retrieval_path or "").suffix.lower() == ".pdf"
                 and bool(source.metadata.get("pdf_pages"))
+                and source.metadata.get("parsed_readable") is True
                 and not source.metadata.get("unreadable_pages"))
             source.metadata["content_verification"] = {"full_text": allowed,
                 "basis": "readable_pdf_all_pages" if allowed else "landing_page_or_incomplete_content",
@@ -526,12 +501,37 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
             return allowed
         from src.tools.source_content import inspect_source
         proof = inspect_source(request.source, request.project.directory)
+        if request.source.source_type == SourceType.WEB_RESOURCE and not (
+                request.source.access_mode in {AccessMode.OPEN_DOWNLOAD, AccessMode.READ_ONLINE}
+                and request.source.rights_status in {RightsStatus.PUBLIC_DOMAIN, RightsStatus.OPEN_LICENSE, RightsStatus.PROVIDER_STATED_FREE}):
+            proof["full_text"] = False
+            proof["findings"].append("Web resource requires open reading rights")
         request.source.metadata["content_verification"] = {k:v for k,v in proof.items() if k not in {"text", "pages"}}
         if not proof["full_text"]:
             request.source.retrieval_status = RetrievalStatus.PARTIAL
             if request.source.state != SourceState.NEEDS_HUMAN_REVIEW:
                 request.source.request_review(reason="; ".join(proof["findings"]))
         return proof["full_text"]
+
+    def _parse_document(self, source, payload, suffix):
+        # Replace parse evidence for every artifact, including empty/failing results.
+        source.metadata.update(pdf_pages=[], unreadable_pages=[], parsed_readable=False,
+            content_verification={"full_text": False, "basis": "current_artifact_not_verified"})
+        source.metadata.pop("artifact_kind", None)
+        source.metadata.pop("retrieval_final_url", None)
+        if suffix == "pdf":
+            parsed = PDFParserTool().parse(payload.content)
+            if not parsed.success:
+                source.retrieval_status = RetrievalStatus.FAILED
+                raise ValueError(parsed.error_message or "PDF parse failed")
+            source.metadata.update(pdf_pages=[p.to_dict() for p in parsed.pages], unreadable_pages=parsed.unreadable_pages)
+            if parsed.ocr_required:
+                source.add_verification_note(f"OCR_REQUIRED_OR_BLANK: Pages {parsed.unreadable_pages} require inspection")
+            text = parsed.full_text or None
+        else:
+            text = self._parse(payload)
+        source.metadata["parsed_readable"] = bool(text)
+        return text
 
     @staticmethod
     def _fetch_url(url: str, timeout_seconds: int, max_bytes: int = 50 * 1024 * 1024) -> RetrievedPayload:
@@ -548,9 +548,6 @@ class RetrievalTool(BaseTool[RetrievalRequest, RetrievalResponse]):
     @staticmethod
     def _parse(payload: RetrievedPayload) -> str | None:
         content_type = payload.content_type.lower()
-        if "pdf" in content_type:
-            pdf_res = PDFParserTool().parse(payload.content)
-            return pdf_res.full_text if pdf_res.has_text_layer else None
         text = payload.content.decode(_charset(content_type), errors="replace")
         if "html" not in content_type:
             return text

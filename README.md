@@ -221,6 +221,13 @@ verification snapshots are written by the existing verification engine and
 reused only while their identity and integrity can be checked. Legacy records
 without these proofs remain candidates requiring verification.
 
+`WEB_RESOURCE` may contain complete HTML checked by the shared inspector and
+open reading-rights guard; landing pages remain partial. Automatic book/chapter
+retrieval still requires a readable PDF with no unexamined pages and open rights.
+Neither format nor access alone establishes scientific eligibility or full reading.
+See [PR #1 follow-up checks](docs/PR1-FOLLOWUP-2026-10-11.md) for the repair scope
+and the remaining qualification limits.
+
 Run the local workflow monitor:
 
 ```bash

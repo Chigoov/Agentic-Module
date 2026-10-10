@@ -1,5 +1,9 @@
 # Perbaikan review Agentic-Module, 2026-10-10
 
+Catatan ini merekam tahap pertama pada `96cd0c9`, bukan hasil akhir PR #1.
+Review lanjutan menemukan R01–R07 dan pertanyaan R08; koreksi dan batas validasi
+terbaru ada di [PR1-FOLLOWUP-2026-10-11.md](PR1-FOLLOWUP-2026-10-11.md).
+
 Review sumber: `Agentic-Module-Review-2026-10-10.zip`, commit
 `3457b04a55ebe4bf3add0d55d4856a7cd9300299`. REPORT, CODE-REVIEW-DETAIL,
 RENCANA-PERBAIKAN, NEEDS-VALIDATION, dan TEST-AND-QUALITY dibaca sebagai laporan

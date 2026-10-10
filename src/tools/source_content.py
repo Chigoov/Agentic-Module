@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -16,19 +18,42 @@ from src.tools.pdf_parser import PDFParserTool
 from src.tools.source_mapper import best_title_match, normalize_doi, normalize_title
 
 
-def sign_verification_snapshot(data: dict) -> dict:
-    """Bind verifier-produced snapshots to this installation, never to caller hashes."""
+def _snapshot_key(*, create=False) -> bytes:
     from src.core.paths import get_paths
     key_path = get_paths().cache_dir / "verification" / ".snapshot-key"
-    key_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        with key_path.open("xb") as stream:
-            stream.write(secrets.token_bytes(32))
-    except FileExistsError:
-        pass
+    if create and not key_path.exists():
+        key_path.parent.mkdir(parents=True, exist_ok=True)
+        # A hard link publishes complete bytes exclusively; an existing installation key wins.
+        with tempfile.NamedTemporaryFile(dir=key_path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            try:
+                stream.write(secrets.token_bytes(32))
+                stream.flush()
+                os.fsync(stream.fileno())
+            except BaseException:
+                stream.close()
+                temporary.unlink(missing_ok=True)
+                raise
+        try:
+            try:
+                os.link(temporary, key_path)
+            except FileExistsError:
+                pass
+        finally:
+            temporary.unlink(missing_ok=True)
+    with key_path.open("rb") as stream:
+        key = stream.read(33)
+    if len(key) != 32:
+        raise ValueError("Snapshot HMAC key must contain exactly 32 bytes; existing key is preserved")
+    return key
+
+
+def sign_verification_snapshot(data: dict) -> dict:
+    """Bind verifier-produced snapshots to this installation, never to caller hashes."""
+    key = _snapshot_key(create=True)
     payload = dict(data)
     payload.pop("signature", None)
-    payload["signature"] = hmac.digest(key_path.read_bytes(),
+    payload["signature"] = hmac.digest(key,
         json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"), "sha256").hex()
     return payload
 
@@ -49,10 +74,8 @@ def stored_metadata(source: Source) -> dict[str, Any] | None:
             return None
         data = json.loads(content)
         signature = data.pop("signature", "")
-        from src.core.paths import get_paths
-        key_path = get_paths().cache_dir / "verification" / ".snapshot-key"
-        if not signature or not key_path.is_file() or not hmac.compare_digest(signature,
-                hmac.digest(key_path.read_bytes(), json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8"), "sha256").hex()):
+        if not signature or not hmac.compare_digest(signature,
+                hmac.digest(_snapshot_key(), json.dumps(data, ensure_ascii=False, sort_keys=True).encode("utf-8"), "sha256").hex()):
             return None
         # ponytail: refresh after one day; signed historical bytes remain intact for audit.
         verified_at = datetime.fromisoformat(data["verified_at"])
@@ -65,13 +88,16 @@ def stored_metadata(source: Source) -> dict[str, Any] | None:
             return None
         matches = data.get("provider_records", [])
         from src.core.config import get_config
-        if data.get("verification_policy") != get_config().verification.model_dump(mode="json"):
+        cfg = get_config()
+        if data.get("verification_policy") != cfg.verification.model_dump(mode="json"):
             return None
-        threshold = get_config().verification.metadata_match_threshold
-        if not get_config().verification.enabled:
+        if len({m.get("provider") for m in matches if m.get("provider")}) < cfg.verification.min_metadata_providers:
             return None
-        if any(not get_config().tools[m["provider"]].enabled or str(get_config().tools[m["provider"]].status) in {"DISABLED", "FAILED", "PENDING_CONFIGURATION"}
-               for m in matches if m.get("provider") in get_config().tools):
+        threshold = cfg.verification.metadata_match_threshold
+        if not cfg.verification.enabled:
+            return None
+        if any(not cfg.tools[m["provider"]].enabled or str(cfg.tools[m["provider"]].status) in {"DISABLED", "FAILED", "PENDING_CONFIGURATION"}
+               for m in matches if m.get("provider") in cfg.tools):
             return None
         if not data.get("verified_at") or not matches or not all(m.get("provider") and m.get("record", {}).get("title") and best_title_match(source.title, [m["record"]["title"]])[1] >= threshold for m in matches):
             return None

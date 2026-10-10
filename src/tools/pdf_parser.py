@@ -138,7 +138,7 @@ class PDFParserTool:
 
             if total_pages == 0:
                 return PDFParseResult(
-                    success=True,
+                    success=False,
                     total_pages=0,
                     has_text_layer=False,
                     ocr_required=True,
