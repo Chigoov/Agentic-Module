@@ -16,6 +16,7 @@ is the boundary that prevents fabricated content from reaching the draft.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from datetime import datetime, timezone
 from enum import IntEnum, StrEnum
 
@@ -72,6 +73,17 @@ class SemanticReview(BaseRecord):
     reviewer: str = "antigravity_agent"
     method: str = "semantic_evaluation"
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @classmethod
+    def load_history(cls, path: Path) -> list[SemanticReview]:
+        """Reject malformed history before callers can overwrite it or clear blockers."""
+        from src.core.storage import read_json
+        if not path.is_file():
+            return []
+        raw = read_json(path)
+        if not isinstance(raw, list):
+            raise ValueError("semantic_reviews.json must contain a list; existing history is preserved")
+        return [cls.model_validate(item) for item in raw]
 
 
 CAUSAL_KEYWORDS = frozenset({

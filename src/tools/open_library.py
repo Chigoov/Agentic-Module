@@ -91,10 +91,8 @@ class OpenLibraryTool(ResearchTool):
         access_mode = AccessMode.UNKNOWN
 
         if ebook_access == "public" and ia_list:
-            ia_id = str(ia_list[0]).strip()
-            download_urls.append(f"https://archive.org/download/{ia_id}/{ia_id}.pdf")
-            rights_status = RightsStatus.PUBLIC_DOMAIN
-            access_mode = AccessMode.OPEN_DOWNLOAD
+            # Public access is not a license or a verified PDF filename.
+            access_mode = AccessMode.READ_ONLINE
         elif ebook_access in {"borrowable", "borrow", "inlibrary"}:
             access_mode = AccessMode.BORROW_ONLY
             rights_status = RightsStatus.RESTRICTED
@@ -130,7 +128,7 @@ class OpenLibraryTool(ResearchTool):
     def _search(self, request: ResearchRequest) -> tuple[list[Source], int, str, str]:
         client = self._client()
         params = self._build_params(request)
-        result = client.get_json(self._BASE_URL, params=params)
+        result = client.get_json(self._endpoint(self._BASE_URL), params=params)
         payload = result.json()
 
         docs = payload.get("docs") or []

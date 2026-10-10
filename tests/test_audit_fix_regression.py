@@ -483,6 +483,10 @@ def test_large_valid_json_parses(monkeypatch: pytest.MonkeyPatch) -> None:
         headers = {"content-type": "application/json"}
         status = 200
 
+        def __init__(self):
+            import io
+            self.body = io.BytesIO(json.dumps({"data": "x" * 210000}).encode())
+
         def __enter__(self) -> "LargeResponse":
             return self
 
@@ -490,7 +494,7 @@ def test_large_valid_json_parses(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
         def read(self, size: int = -1) -> bytes:
-            return json.dumps({"data": "x" * 210000}).encode()
+            return self.body.read(size)
 
     monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout: LargeResponse())
     result = HttpClient(tool_name="audit", max_retries=0).get_json("https://example.invalid/x")

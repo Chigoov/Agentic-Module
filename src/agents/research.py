@@ -235,19 +235,14 @@ class RetrievalAgent(BaseAgent[RetrievalAgentRequest, RetrievalAgentResponse]):
                 continue
             direct_dl = getattr(source, "download_allowed", False)
             response = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=direct_dl))
+            if not response.success and direct_dl:
+                response = tool.execute(RetrievalRequest(project=request.project, source=source,
+                    direct_download=False, allow_direct_download=False))
             content_proof = source.metadata.get("content_verification")
-            if response.success and response.retrieval_method != "abstract" and content_proof and not content_proof["full_text"]:
-                failed.append(source.id)
-                continue
-            if response.success and response.parsed_text:
+            if response.success and response.parsed_text and (response.retrieval_method == "abstract"
+                    or isinstance(content_proof, dict) and content_proof.get("full_text") is True):
                 parsed[source.id] = response.parsed_text
-            elif not response.success:
-                # If direct download failed, try regular abstract/url retrieval as fallback
-                if direct_dl:
-                    fallback_resp = tool.execute(RetrievalRequest(project=request.project, source=source, direct_download=False))
-                    if fallback_resp.success and fallback_resp.parsed_text:
-                        parsed[source.id] = fallback_resp.parsed_text
-                        continue
+            else:
                 failed.append(source.id)
         return RetrievalAgentResponse(sources=request.sources, parsed_text_by_source=parsed, failed=failed, needs_human_review=bool(failed))
 

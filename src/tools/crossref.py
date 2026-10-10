@@ -46,13 +46,13 @@ class CrossrefTool(ResearchTool):
 
     _BASE_URL: ClassVar[str] = "https://api.crossref.org/works"
 
-    def _client(self) -> HttpClient:
+    def _client(self, *, verification: bool = False) -> HttpClient:
         cfg = get_config().tool("crossref")
         return HttpClient(
             tool_name=self.name,
             contact_email=cfg.contact_email,
             timeout_seconds=self._timeout(),
-            max_retries=get_config().research.max_discovery_retries,
+            max_retries=get_config().research.max_verification_retries if verification else get_config().research.max_discovery_retries,
         )
 
     def _timeout(self) -> int:
@@ -116,7 +116,7 @@ class CrossrefTool(ResearchTool):
     ) -> tuple[list[Source], int, str, str]:
         client = self._client()
         params = self._build_params(request)
-        result = client.get_json(self._BASE_URL, params=params)
+        result = client.get_json(self._endpoint(self._BASE_URL, "/works"), params=params)
         payload = result.json()
 
         items = (payload.get("message") or {}).get("items") or []
@@ -134,11 +134,13 @@ class CrossrefTool(ResearchTool):
         missing or malformed DOI, or when the provider returns no titled record
         (never fabricates a source).
         """
+        if not self.is_available():
+            return None
         normalized = normalize_doi(doi)
         if not normalized:
             return None
-        client = self._client()
-        url = f"{self._BASE_URL}/{urllib.parse.quote(normalized, safe='')}"
+        client = self._client(verification=True)
+        url = f"{self._endpoint(self._BASE_URL, '/works')}/{urllib.parse.quote(normalized, safe='')}"
         result = client.get_json(url)
         item = result.json().get("message") or {}
         if not isinstance(item, dict):

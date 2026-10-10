@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import io
 import urllib.error
 
 import pytest
@@ -23,11 +24,11 @@ class _FakeResponse:
     def __init__(self, status: int, body: bytes, headers: dict[str, str] | None = None) -> None:
         self.status = status
         self.code = status
-        self._body = body
+        self._body = io.BytesIO(body)
         self.headers = headers or {}
 
     def read(self, size: int = -1) -> bytes:
-        return self._body
+        return self._body.read(size)
 
     def __enter__(self) -> "_FakeResponse":
         return self

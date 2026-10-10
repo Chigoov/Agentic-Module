@@ -208,6 +208,13 @@ def test_configured_openai_provider_mock_success(monkeypatch: pytest.MonkeyPatch
         telemetry = read_jsonl(tmp_path / "model_telemetry.jsonl")
         assert len(telemetry) >= 1
         assert telemetry[-1]["status"] == "SUCCESS"
+        assert telemetry[-1]["tokens_used"] == 42
+        from src.schemas.project import Project
+        from src.workflows.optimization import OptimizationRequest, OptimizationWorkflow
+        project = Project(name="dummy", workspace="dummy", path=str(tmp_path), title="Dummy telemetry")
+        optimized = OptimizationWorkflow().execute(OptimizationRequest(project=project, telemetry_path=str(tmp_path / "model_telemetry.jsonl")))
+        assert optimized.report["total_tokens"] == 42
+        assert optimized.report["failed_runs"] == 0
     finally:
         reset_config_cache()
         reset_paths_cache()

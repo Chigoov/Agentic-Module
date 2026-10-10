@@ -302,6 +302,7 @@ def test_cli_api_finalize_forward_same_review_options(tmp_path, monkeypatch):
     handler.path = "/api/run-academic"; handler.headers = {"Content-Length": str(len(raw))}
     handler.rfile = io.BytesIO(raw)
     handler._token_ok = lambda: True; handler._json = lambda *args: None
+    handler._host_allowed = lambda: True
     handler.do_POST()
     assert len(observed) == 3
     for request in observed:
@@ -370,16 +371,17 @@ def test_preview_and_abstract_do_not_become_full_manuscripts(tmp_path):
     assert not inspect_source(source)["full_text"]
 
 
-def test_cached_verification_is_reused_only_while_hash_and_identity_match(tmp_path):
+def test_historical_verification_cannot_replace_current_provider_refresh(tmp_path):
     from src.tools.verification_tool import VerificationEngine
     source = bundle(tmp_path)[0][0]
     class NoLookup:
         name = "unavailable provider"
         def lookup_by_bibliographic(self, **kw):
-            raise AssertionError("A valid cached snapshot should avoid a new search")
+            return None
     engine = VerificationEngine(providers=[NoLookup()])
-    assert engine.verify(source).recommended_state == "METADATA_VERIFIED"
-    source.metadata["verification_artifact"]["sha256"] = "invalid"
+    assert engine.verify(source).recommended_state == "NEEDS_HUMAN_REVIEW"
+    assert "verification_artifact" not in source.metadata
+    assert source.metadata["historical_verification_artifacts"]
     assert engine.verify(source).recommended_state == "NEEDS_HUMAN_REVIEW"
 
 

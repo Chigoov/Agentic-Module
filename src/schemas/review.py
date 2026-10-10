@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -20,10 +20,10 @@ class ReviewItem(BaseRecord):
 
     item_type: str  # "claim", "evidence", "source"
     item_id: str
-    severity: str  # "LOW", "MEDIUM", "HIGH", "CRITICAL"
+    severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     reason: str
     recommended_action: str
-    status: str = "PENDING"  # "PENDING", "IN_REVIEW", "RESOLVED", "DISMISSED"
+    status: Literal["PENDING", "IN_REVIEW", "RESOLVED", "DISMISSED"] = "PENDING"
     resolution_notes: str | None = None
     blocks_finalization: bool | None = None
 
@@ -96,7 +96,7 @@ class ReviewQueue:
 
         raw = read_json(target)
         if not isinstance(raw, list):
-            return cls()
+            raise ValueError(f"Existing review queue must be a JSON list: {target}")
         items = [ReviewItem.from_dict(item) for item in raw]
         return cls(items)
 

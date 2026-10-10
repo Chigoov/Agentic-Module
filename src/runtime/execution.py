@@ -6,6 +6,11 @@ import re
 import shutil
 import sys
 import uuid
+import os
+import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -30,6 +35,34 @@ class WorkflowReadinessError(RuntimeError):
     def __init__(self, issues: Iterable[str]) -> None:
         self.issues = tuple(str(issue) for issue in issues if str(issue).strip())
         super().__init__("Workflow preflight failed: " + "; ".join(self.issues))
+
+
+_held_projects: ContextVar[frozenset[Path]] = ContextVar("held_projects", default=frozenset())
+
+
+@contextmanager
+def project_write_lock(project_dir: Path):
+    """Reject concurrent writers across threads/processes; allow nested workflows."""
+    root = project_dir.resolve()
+    if get_paths().is_inside_system_root(root):
+        raise WorkflowReadinessError(["execution folder cannot be inside SYSTEM_ROOT"])
+    held = _held_projects.get()
+    if root in held:
+        yield
+        return
+    lock = root / ".aai-active.lock"
+    # ponytail: exclusive file, no automatic stale-lock deletion; inspect interrupted runs before recovery.
+    try:
+        with lock.open("x", encoding="utf-8") as stream:
+            stream.write(str(os.getpid()))
+    except FileExistsError as exc:
+        raise WorkflowReadinessError([f"project already has an active writer: {root}"]) from exc
+    token = _held_projects.set(held | {root})
+    try:
+        yield
+    finally:
+        _held_projects.reset(token)
+        lock.unlink(missing_ok=True)
 
 
 def _slug(value: str) -> str:
@@ -125,13 +158,13 @@ def ensure_workflow_ready(
             issues.append("system health check failed")
     if resolved_paths.is_inside_system_root(project.directory):
         issues.append("execution folder cannot be inside SYSTEM_ROOT")
+        raise WorkflowReadinessError(issues)
     if not project.directory.is_dir():
         issues.append(f"execution folder does not exist: {project.directory}")
     else:
         try:
-            probe = project.directory / ".aai_write_probe"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink()
+            with tempfile.TemporaryFile(dir=project.directory) as probe:
+                probe.write(b"ok")
         except OSError as exc:
             issues.append(f"execution folder is not writable: {exc}")
 

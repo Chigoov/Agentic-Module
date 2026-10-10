@@ -596,6 +596,8 @@ def build_quantitative_review_workbook(
         ]
         for col, value in enumerate(values, 1):
             master.cell(row, col).value = value
+            if isinstance(value, str):
+                master.cell(row, col).data_type = "s"
         for col in (14, 15, 16):
             value = master.cell(row, col).value
             if isinstance(value, str):
@@ -645,6 +647,8 @@ def build_quantitative_review_workbook(
         ]
         for col, value in enumerate(values, 1):
             ranking.cell(row, col).value = value
+            if isinstance(value, str):
+                ranking.cell(row, col).data_type = "s"
 
     counts = _counts(selected, ranked, summary, None, require_free_full_text=require_free_full_text)
     for row in range(12, 16):

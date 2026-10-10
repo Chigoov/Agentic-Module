@@ -44,7 +44,9 @@ def sample_open_library_payload() -> dict:
     }
 
 
-def test_open_library_public_book_allows_download(sample_open_library_payload: dict) -> None:
+pytestmark = pytest.mark.usefixtures("enabled_research_tools")
+
+def test_open_library_public_access_does_not_invent_rights_or_filename(sample_open_library_payload: dict) -> None:
     tool = OpenLibraryTool()
     source = tool._item_to_source(sample_open_library_payload["docs"][0])
 
@@ -59,10 +61,10 @@ def test_open_library_public_book_allows_download(sample_open_library_payload: d
     assert source.provider_record_id == "/works/OL12345W"
     assert source.source_type is SourceType.BOOK
 
-    assert source.access_mode is AccessMode.OPEN_DOWNLOAD
-    assert source.rights_status is RightsStatus.PUBLIC_DOMAIN
-    assert source.download_allowed is True
-    assert source.download_urls == ["https://archive.org/download/classicbook1920/classicbook1920.pdf"]
+    assert source.access_mode is AccessMode.READ_ONLINE
+    assert source.rights_status is RightsStatus.UNKNOWN
+    assert source.download_allowed is False
+    assert source.download_urls == []
 
 
 def test_open_library_borrowable_book_blocks_download(sample_open_library_payload: dict) -> None:

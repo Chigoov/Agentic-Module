@@ -119,7 +119,7 @@ class SemanticScholarTool(ResearchTool):
     ) -> tuple[list[Source], int, str, str]:
         client = self._client()
         params = self._build_params(request)
-        result = client.get_json(self._BASE_URL, params=params)
+        result = client.get_json(self._endpoint(self._BASE_URL, "/graph/v1/paper/search"), params=params)
         payload = result.json()
 
         items = payload.get("data") or []

@@ -80,29 +80,35 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
         )
 
     def _execute(self, request: AcademicWritingRequest) -> AcademicWritingResponse:
+        from src.runtime.execution import project_write_lock
+        # Preflight precedes even the lockfile or any project output.
+        ensure_workflow_ready(project=request.project)
+        with project_write_lock(request.project.directory):
+            return self._run(request)
+
+    def _run(self, request: AcademicWritingRequest) -> AcademicWritingResponse:
+        sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
+        persisted_reviews = SemanticReview.load_history(sem_path)
         resolve_source_paths(request.sources, request.project)
         options = review_options(request.model_dump(exclude_unset=True), request.project)
         for name, value in options.items():
             setattr(request, name, value)
+        required_tools = [DocxGenerationTool()] if request.generate_docx else []
+        required_tools.extend(p for p in getattr(request.verification_engine, "_providers", ())
+                              if getattr(p, "is_available", lambda: True)())
+        review_template = resolve_standard_workbook_template(request.quantitative_review_template) if request.quantitative_review or request.quantitative_review_records else None
+        readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
         write_json(request.project.directory / "workflow_options.json", options, root=request.project.directory, overwrite=True)
         request.project.research_options.update(options)
         write_json(request.project.directory / "project.json", request.project.model_dump(mode="json"), root=request.project.directory, overwrite=True)
-        required_tools = [DocxGenerationTool()] if request.generate_docx else []
-        required_tools.extend(getattr(request.verification_engine, "_providers", ()))
-        review_template = resolve_standard_workbook_template(request.quantitative_review_template) if request.quantitative_review or request.quantitative_review_records else None
-        readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
         audit = AcademicRunAudit.start(project=request.project, claims=request.claims, evidence=request.evidence,
             sources=request.sources, outline=request.outline, command=request.command or "run-academic", input_path=request.input_path)
         write_json(audit.run_dir / "workflow_options.json", options, root=request.project.directory, overwrite=True)
         search_summary = audit.snapshot_search_summary(request.quantitative_review_summary)
         semantic_reviews = list(request.semantic_reviews)
-        sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
-        if sem_path.is_file():
-            import json
-            for raw in json.loads(sem_path.read_text(encoding="utf-8")):
-                item = SemanticReview.model_validate(raw)
-                if not any(r.claim_id == item.claim_id for r in semantic_reviews):
-                    semantic_reviews.append(item)
+        for item in persisted_reviews:
+            if not any(r.claim_id == item.claim_id for r in semantic_reviews):
+                semantic_reviews.append(item)
         write_json(sem_path, [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
         write_json(audit.run_dir / "semantic_reviews.json", [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
         quantitative = None

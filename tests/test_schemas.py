@@ -1,6 +1,7 @@
 """Tests for schema validation, state transitions, and serialization."""
 
 import json
+from datetime import timedelta
 
 import pytest
 
@@ -30,18 +31,20 @@ def test_base_record_auto_id() -> None:
     assert record.created_at <= utc_now()
 
 
-def test_base_record_touch() -> None:
+def test_base_record_touch(monkeypatch) -> None:
     """touch() refreshes updated_at."""
     record = BaseRecord()
     original_updated = record.updated_at
+    monkeypatch.setattr("src.schemas.base.utc_now", lambda: original_updated + timedelta(seconds=1))
     record.touch()
     assert record.updated_at > original_updated
 
 
-def test_base_record_transition() -> None:
+def test_base_record_transition(monkeypatch) -> None:
     """record_transition() appends to history and refreshes updated_at."""
     record = BaseRecord()
     original_updated = record.updated_at
+    monkeypatch.setattr("src.schemas.base.utc_now", lambda: original_updated + timedelta(seconds=1))
     trans = record.record_transition(
         from_state="A", to_state="B", reason="test transition", actor="test"
     )

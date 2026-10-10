@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from pathlib import Path
 from conftest import fixture_source
 
@@ -12,6 +13,20 @@ from src.schemas.evidence import Evidence, EvidenceLocation
 from src.schemas.outline import Outline, OutlineSection
 from src.schemas.project import Project
 from src.schemas.source import Source, SourceState
+
+
+@pytest.fixture(autouse=True)
+def portable_cli_workspace(tmp_path, monkeypatch):
+    from src.core.paths import reset_paths_cache
+    from src.core.config import reset_config_cache
+    workspace = tmp_path / "workspaces"
+    (workspace / "TUGAS 1").mkdir(parents=True)
+    monkeypatch.setenv("AUTONOMI_SYSTEM_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("AUTONOMI_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("AUTONOMI__LOGGING__FILE", "false")
+    reset_paths_cache(); reset_config_cache()
+    yield
+    reset_paths_cache(); reset_config_cache()
 
 
 def test_cli_plan_outputs_json(capsys) -> None:
