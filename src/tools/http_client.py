@@ -189,7 +189,7 @@ class HttpClient:
                 # Bounded read (audit A12): cap what we accept from the
                 # network, but never truncate *within* the cap — a payload
                 # that fits must parse whole.
-                raw = response.read(_MAX_BODY_BYTES + 1)
+                raw = read_bounded(response, _MAX_BODY_BYTES)
         except urllib.error.HTTPError:
             # Re-raised for the caller's retry/error handling to inspect .code.
             raise
@@ -255,7 +255,7 @@ class HttpClient:
     def _to_integration_error(self, url: str, exc: urllib.error.HTTPError) -> IntegrationError:
         detail = ""
         try:
-            detail = exc.read().decode("utf-8", errors="replace")[:2000]
+            detail = exc.read(2000).decode("utf-8", errors="replace")[:2000]
         except Exception:  # noqa: BLE001 - best-effort body read
             pass
         return IntegrationError(
@@ -265,3 +265,17 @@ class HttpClient:
             status=exc.code,
             detail=detail,
         )
+
+
+def read_bounded(stream, limit: int) -> bytes:
+    """Consume at most limit+1 bytes, including transports returning short reads."""
+    chunks, size = [], 0
+    while size <= limit:
+        chunk = stream.read(min(64 * 1024, limit + 1 - size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+    if size > limit:
+        raise IntegrationError("Response exceeds byte limit", error_code="RESPONSE_TOO_LARGE")
+    return b"".join(chunks)

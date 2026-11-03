@@ -344,6 +344,7 @@ def test_cli_runs_prune_behavior(tmp_path: Path, capsys: pytest.CaptureFixture[s
         summary = {
             "run_id": run_id,
             "started_at": f"2026-09-01T00:00:0{i}.000000+00:00",
+            "finished_at": f"2026-09-01T00:01:0{i}.000000+00:00",
             "success": True,
         }
         (d / "run_summary.json").write_text(json.dumps(summary), encoding="utf-8")

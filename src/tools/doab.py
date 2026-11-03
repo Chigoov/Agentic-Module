@@ -165,7 +165,7 @@ class DOABTool(ResearchTool):
     def _search(self, request: ResearchRequest) -> tuple[list[Source], int, str, str]:
         client = self._client()
         params = self._build_params(request)
-        result = client.get_json(self._BASE_URL, params=params)
+        result = client.get_json(self._endpoint(self._BASE_URL), params=params)
         payload = result.json()
 
         items = payload if isinstance(payload, list) else (payload.get("items") or [])

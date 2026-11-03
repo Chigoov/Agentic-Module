@@ -56,7 +56,7 @@ def test_monitor_filters_before_limit_and_ignores_unfinished_append(tmp_path, mo
             data = json.load(response)
         assert len(data["events"]) == 1
         assert data["events"][0]["retrieved"] == 1
-        for route, content_type in [("/", "text/html"), ("/workflow", "text/html"), ("/assets/office.js", "text/javascript"), ("/assets/research-office.jpg", "image/jpeg"), ("/assets/research-team.webp", "image/webp")]:
+        for route, content_type in [("/", "text/html"), ("/workflow", "text/html"), ("/assets/office.js", "text/javascript"), ("/assets/research-office.jpg", "image/jpeg"), ("/assets/research-team.webp", "image/webp"), ("/assets/research-team-seated-v5.png", "image/png")]:
             with urlopen(base + route) as response:
                 assert response.headers.get_content_type() == content_type
                 assert response.read()
@@ -85,5 +85,17 @@ def test_home_keeps_jobs_separate_and_does_not_count_finished_agents(tmp_path, m
         assert result["counts"] == {"running": 1, "review": 1, "agents": 2}
         assert {j["job_id"] for j in result["jobs"]} == {"live", "review", "finished"}
         assert {j["job_id"]: j["status"] for j in result["jobs"]}["review"] == "partial"
+        from src.runtime import monitor
+        original = monitor.progress_since
+        calls = []
+        def counted(**kwargs):
+            calls.append(1)
+            return original(**kwargs)
+        monkeypatch.setattr(monitor, 'progress_since', counted)
+        assert _jobs() == result  # Hermes refreshes reuse unchanged AAI history.
+        assert not calls
+        record_progress('academic', 'completed', job_id='live', project_path=str(workspace/'live'), event_kind='job')
+        assert _jobs()['counts']['running'] == 0
+        assert len(calls) == 1
     finally:
         reset_paths_cache()

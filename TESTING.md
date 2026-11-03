@@ -1,11 +1,15 @@
 # Testing & Quality Assurance Architecture
-## AUTONOMI AGENTIC ILMIAH (AAI) v1.1.0
+## AUTONOMI AGENTIC ILMIAH (AAI), versi paket 1.0.0
 
 ---
 
 ## 1. Test Suite Overview & Evolution
 
-AAI enforces rigorous test-driven validation. Every architectural invariant, gate rule, and schema constraint is accompanied by automated unit, property, and integration tests.
+Test memeriksa kontrak lokal, gate, dan regresi. Hasil sintetis tidak membuktikan
+riset artikel nyata, provider live, atau integrasi model/Hermes. CI Windows
+menjalankan Python 3.11, 3.12, dan 3.14. Hasil perbaikan bertanggal 2026-10-10 dan
+batas validasinya dicatat di `docs/REVIEW-REPAIRS-2026-10-10.md`; status CI pada
+SHA yang sedang dipakai harus dibaca dari GitHub Actions.
 
 ### 1.1 Test Evolution Metric
 
@@ -13,9 +17,13 @@ AAI enforces rigorous test-driven validation. Every architectural invariant, gat
 ┌────────────────────────────────────────────────────────┐
 │  Baseline (v1.0.0): 349 tests passed                   │
 │  Evidence Intelligence Upgrade (v1.1.0): +59 tests     │
-│  Current Total: 408 passed, 10 deselected in ~8.9s     │
+│  Historical v1.1 feature run: 408 passed, 10 deselected │
 └────────────────────────────────────────────────────────┘
 ```
+
+Angka di atas adalah catatan historis, bukan hasil commit saat ini. Label v1.1
+menunjuk tahap pengembangan fitur historis; versi paket dan `src.__version__`
+tetap 1.0.0. Tidak ada klaim coverage persen tanpa pengukuran.
 
 The test suite covers:
 - Core schema invariants and model validation.
@@ -38,9 +46,18 @@ python -m pytest -q --tb=short
 # Run specifically the Evidence Intelligence test suite
 python -m pytest tests/test_evidence_intelligence.py -v
 
-# Run with coverage report
-python -m pytest --cov=src --cov-report=term-missing
+# Tooling yang dideklarasikan tidak mencakup pytest-cov; tidak ada perintah coverage.
 ```
+
+Default pytest mengecualikan marker integration. Tiga tes corpus historis dapat
+skip bila folder TUGAS tidak tersedia; fixture portabel diuji terpisah. Beberapa
+tes memakai server localhost, jadi default suite bukan jaminan tanpa network.
+Tes live harus dijalankan terpisah dengan izin/kuota dan provenance yang jelas.
+Laporan September yang disimpan dalam repositori adalah arsip historis, bukan
+bukti provider live pada commit perbaikan Oktober.
+
+Lisensi tetap menunggu keputusan pemilik; perbaikan ini tidak memilih atau
+mengubah lisensi atas nama pemilik.
 
 ### CLI Smoke Testing
 Verify that system CLI entrypoints remain operational and compliant:

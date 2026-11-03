@@ -132,6 +132,21 @@ def health_check(*, paths: SystemPaths | None = None, verbose: bool = False) -> 
     return True
 
 
+def capability_readiness(command="research", *, config=None):
+    """Configuration readiness does not establish live verification."""
+    config = config or get_config()
+    required = ["doab", "open_library", "crossref"] if command == "research" else []
+    available = lambda name: name in config.tools and config.tools[name].enabled and str(config.tools[name].status) not in {"DISABLED", "FAILED", "PENDING_CONFIGURATION"}
+    missing = [name for name in required if not available(name)]
+    verification = [name for name in ("crossref", "openalex") if available(name)]
+    if command in {"research", "run-academic", "finalize"} and (not config.verification.enabled or len(verification) < config.verification.min_metadata_providers):
+        missing.append("metadata verification providers")
+    return {"command": command, "configuration_ready": not missing, "missing_capabilities": missing,
+        "required_discovery": required, "enabled_verification": verification,
+        "integration_assurance": "configuration_only_not_live_verified",
+        "remediation": "Enable required providers in config/system.local.yaml or AUTONOMI__TOOLS__<NAME>__ENABLED=true, then run live integration checks" if missing else None}
+
+
 def bootstrap(*, verbose: bool = False) -> SystemPaths:
     """Initialize the system: paths → config → logging → health check.
 

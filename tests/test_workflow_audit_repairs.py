@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import io
 import json
+import shutil
 from pathlib import Path
 import zipfile
 
@@ -29,6 +30,93 @@ from src.tools.source_content import inspect_source, recheck_quote
 from src.workflows.academic import AcademicWritingRequest, AcademicWritingResponse, AcademicWritingWorkflow
 from src.workflows.export_bundle import export_bundle
 from src.workflows.gates import check_academic_integrity, check_document_quality
+
+
+@pytest.mark.parametrize("changed", ["source", "claims_snapshot.json", "evidence_snapshot.json", "run_summary.json", "missing_source", "extra_source", "legacy"])
+def test_export_rejects_run_drift_without_replacing_existing_bundle(tmp_path, changed):
+    project = project_at(tmp_path); sources, claims, ev, outline = bundle(project.directory)
+    response = AcademicWritingWorkflow().execute(AcademicWritingRequest(project=project, sources=sources, claims=claims, evidence=ev, outline=outline))
+    assert response.success
+    original = export_bundle(project.directory, run_id=response.run_id)
+    assert original["success"]
+    archive = Path(original["bundle_path"]); before = archive.read_bytes()
+    run = Path(response.run_dir)
+    source_path = Path(json.loads((run / "sources_snapshot.json").read_text(encoding="utf-8"))[0]["retrieval_path"])
+    if changed == "source":
+        source_path.write_text("Synthetic changed manuscript", encoding="utf-8")
+    elif changed == "missing_source":
+        source_path.unlink()
+    elif changed == "extra_source":
+        (source_path.parent / "unexpected.txt").write_text("Synthetic extra", encoding="utf-8")
+    elif changed == "legacy":
+        (run / "integrity_manifest.json").unlink()
+    else:
+        path = run / changed
+        content = json.loads(path.read_text(encoding="utf-8"))
+        if changed == "run_summary.json":
+            content["finalization_allowed"] = not content["finalization_allowed"]
+        else:
+            content = []
+        path.write_text(json.dumps(content), encoding="utf-8")
+    exported = export_bundle(project.directory, run_id=response.run_id)
+    assert not exported["success"] and "integrity" in exported["error"].lower()
+    assert archive.read_bytes() == before
+    assert not list(archive.parent.glob(".bundle_*.tmp"))
+
+
+@pytest.mark.parametrize("quantitative", [False, True])
+def test_relocated_run_exports_repeatedly_without_changing_run(tmp_path, quantitative):
+    project = project_at(tmp_path); sources, claims, ev, outline = bundle(project.directory)
+    response = AcademicWritingWorkflow().execute(AcademicWritingRequest(project=project, sources=sources, claims=claims,
+        evidence=ev, outline=outline, quantitative_review=quantitative))
+    assert response.success
+    original = Path(response.run_dir)
+    expected = {p.relative_to(original): p.read_bytes() for p in original.rglob("*") if p.is_file()}
+    relocated = tmp_path / "relocated"
+    shutil.move(str(project.directory), relocated)
+    assert not project.directory.exists()
+    for _ in range(2):
+        exported = export_bundle(relocated, run_id=response.run_id)
+        assert exported["success"], exported
+        with zipfile.ZipFile(exported["bundle_path"]) as archive:
+            assert archive.testzip() is None
+            assert archive.read("academic_output/draft.md") == expected[Path("artifacts/draft.md")]
+            assert archive.read("run/claims_snapshot.json") == expected[Path("claims_snapshot.json")]
+        manifest = json.loads(Path(exported["manifest_path"]).read_text(encoding="utf-8"))
+        assert all(Path(item["path"]).is_relative_to(relocated) for item in manifest["artifacts"])
+    current = relocated / "runs" / response.run_id
+    assert expected == {p.relative_to(current): p.read_bytes() for p in current.rglob("*") if p.is_file()}
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_snapshot_initialization_failure_keeps_run_identity_and_closes_marker(tmp_path, monkeypatch, persistent):
+    import src.workflows.audit_trail as module
+    project = project_at(tmp_path); sources, claims, ev, outline = bundle(project.directory)
+    real_write = module.write_json
+    def fail_snapshot(path, *args, **kwargs):
+        if Path(path).name == "sources_snapshot.json" or persistent:
+            raise OSError("Synthetic snapshot write failure")
+        return real_write(path, *args, **kwargs)
+    monkeypatch.setattr(module, "write_json", fail_snapshot)
+    response = AcademicWritingWorkflow().execute(AcademicWritingRequest(project=project, sources=sources, claims=claims, evidence=ev, outline=outline))
+    assert not response.success and response.needs_human_review
+    assert response.metadata["result_status"] == "FAILED" and not response.metadata["finalization_allowed"]
+    assert response.run_id and response.run_dir
+    run = Path(response.run_dir)
+    assert run.is_dir() and not (run / ".active").exists()
+    assert not (project.directory / ".aai-active.lock").exists()
+    if persistent:
+        assert "failure summary unavailable" in response.error_message
+    else:
+        summary = json.loads((run / "run_summary.json").read_text(encoding="utf-8"))
+        assert not summary["success"] and summary["needs_human_review"]
+        assert Path(summary["findings_workbook_path"]).is_file()
+        assert Path(summary["work_report_path"]).is_file()
+        exported = export_bundle(project.directory, run_id=response.run_id, include_failed=True)
+        assert exported["success"], exported
+    monkeypatch.setattr(module, "write_json", real_write)
+    retried = AcademicWritingWorkflow().execute(AcademicWritingRequest(project=project, sources=sources, claims=claims, evidence=ev, outline=outline))
+    assert retried.success and retried.run_id != response.run_id
 
 
 def project_at(root: Path):
@@ -302,6 +390,7 @@ def test_cli_api_finalize_forward_same_review_options(tmp_path, monkeypatch):
     handler.path = "/api/run-academic"; handler.headers = {"Content-Length": str(len(raw))}
     handler.rfile = io.BytesIO(raw)
     handler._token_ok = lambda: True; handler._json = lambda *args: None
+    handler._host_allowed = lambda: True
     handler.do_POST()
     assert len(observed) == 3
     for request in observed:
@@ -370,16 +459,17 @@ def test_preview_and_abstract_do_not_become_full_manuscripts(tmp_path):
     assert not inspect_source(source)["full_text"]
 
 
-def test_cached_verification_is_reused_only_while_hash_and_identity_match(tmp_path):
+def test_historical_verification_cannot_replace_current_provider_refresh(tmp_path):
     from src.tools.verification_tool import VerificationEngine
     source = bundle(tmp_path)[0][0]
     class NoLookup:
         name = "unavailable provider"
         def lookup_by_bibliographic(self, **kw):
-            raise AssertionError("A valid cached snapshot should avoid a new search")
+            return None
     engine = VerificationEngine(providers=[NoLookup()])
-    assert engine.verify(source).recommended_state == "METADATA_VERIFIED"
-    source.metadata["verification_artifact"]["sha256"] = "invalid"
+    assert engine.verify(source).recommended_state == "NEEDS_HUMAN_REVIEW"
+    assert "verification_artifact" not in source.metadata
+    assert source.metadata["historical_verification_artifacts"]
     assert engine.verify(source).recommended_state == "NEEDS_HUMAN_REVIEW"
 
 

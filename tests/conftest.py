@@ -18,6 +18,31 @@ from src.core.config import SystemConfig, get_config, load_config
 from src.core.paths import SystemPaths, get_paths
 
 
+@pytest.fixture
+def enabled_research_tools(monkeypatch):
+    """Explicitly enable adapters exercised through fake transports, never live qualification."""
+    from src.core.config import ToolSection
+    for name in ("crossref", "openalex", "doab", "open_library", "semantic_scholar", "pubmed"):
+        cfg = get_config().tool(name)
+        monkeypatch.setitem(get_config().tools, name, cfg.model_copy(update={"enabled": True, "status": "CONFIGURED"}))
+
+
+@pytest.fixture
+def synthetic_verifier():
+    """Refresh synthetic records via an explicit fake provider, with no network."""
+    from src.tools.verification_tool import VerificationEngine
+    from src.tools.source_content import stored_metadata
+    from src.schemas.source import Source
+    class Provider:
+        name = "synthetic fixture provider"
+    engine = VerificationEngine(providers=[Provider()])
+    def fetch(source, provider):
+        snapshot = stored_metadata(source)
+        return Source.model_validate(snapshot["provider_records"][0]["record"]) if snapshot else None
+    engine._fetch_record = fetch
+    return engine
+
+
 @pytest.fixture(scope="session")
 def real_system_root() -> Path:
     """The actual DATA BASE folder, used by tests that need to read specs."""
@@ -91,6 +116,8 @@ def fixture_source(source, text=None, root=None, *, cache_report=False):
     source.retrieval_path = str(path)
     source.metadata["retrieval"] = {"sha256": digest, "retrieved_at": stamp, "origin": "synthetic unit-test fixture", "retrieval_method": "fixture"}
     snapshot = {"source_id": source.id, "title": source.title, "doi": source.doi, "verified_at": stamp,
+        "authors": source.authors, "year": source.year, "venue": source.venue,
+        "verification_policy": get_config().verification.model_dump(mode="json"),
         "provider_records": [{"provider": "synthetic fixture provider", "record": source.model_dump(mode="json")}]}
     if cache_report:
         from src.schemas.verification import VerificationReport, VerificationCheck
@@ -98,7 +125,8 @@ def fixture_source(source, text=None, root=None, *, cache_report=False):
         for level in ("EXISTENCE", "METADATA"):
             report.add_check(VerificationCheck(name="synthetic_test_check", level=level, status="PASSED", provider="synthetic fixture provider", detail="Unit test only"))
         snapshot["report"] = report.model_dump(mode="json")
-    raw = json.dumps(snapshot).encode("utf-8")
+    from src.tools.source_content import sign_verification_snapshot
+    raw = json.dumps(sign_verification_snapshot(snapshot)).encode("utf-8")
     meta = root / (source.id + "-metadata.json")
     meta.write_bytes(raw)
     source.metadata["verification_artifact"] = {"path": str(meta), "sha256": hashlib.sha256(raw).hexdigest()}

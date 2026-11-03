@@ -11,25 +11,45 @@ tests/test_workflow_audit_repairs.py. Jangan gunakan fixture sebagai artikel nya
 - Metadata yang tidak tersedia tetap null. Sumber baru DISCOVERED; APPROVED
   dari input bukan bukti.
 - metadata.verification_artifact berisi path dan SHA-256 snapshot JSON dari
-  verification engine. Snapshot mengikat source_id, title, doi, verified_at,
-  provider_records (provider dan record). Gunakan snapshot tersimpan bila
-  identitas dan hash valid; internet ulang tidak wajib untuk setiap run.
+  verification engine. Snapshot mengikat source_id, title, doi, authors, year,
+  venue, verified_at, verification_policy, dan provider_records (provider dan
+  record), dengan signature lokal yang dibuat engine. Hash dari input saja
+  tidak membuktikan asal. Snapshot yang tidak ditandatangani, lebih dari satu
+  hari, atau berbeda identitas/kebijakan harus diverifikasi ulang. Setiap
+  pemanggilan verify melakukan refresh; snapshot historis tetap dipertahankan.
+  verification_policy mencatat enabled, threshold, dan minimum provider yang
+  benar-benar dipakai engine (tetap sejak konstruksi, termasuk override).
+  Consumer mensyaratkan policy saat ini dan jumlah provider berbeda yang cukup;
+  setelah konfigurasi berubah, buat engine baru untuk re-verifikasi. Key lokal
+  harus tepat 32 bytes, dipublikasikan lengkap tanpa mengganti key yang sehat.
   Jangan menulis provider atau hasil verifikasi rekaan untuk penelitian nyata.
 - retrieval_path menunjuk PDF, HTML, atau ekstraksi JSON/text nyata.
   metadata.retrieval memuat sha256, retrieved_at, retrieval_method, final_url
   atau origin. Hash dihitung dari byte file yang tersimpan.
+- WEB_RESOURCE boleh HTML lengkap atau PDF yang lolos inspector bersama,
+  identitas/provenance/cakupan, dan hak baca terbuka. Landing HTML tetap parsial.
+  BOOK/BOOK_CHAPTER otomatis masih mensyaratkan PDF terbaca pada semua halaman
+  serta hak akses terbuka; hak terbuka saja tidak membuktikan full text.
+  Metadata parse diganti per artefak, termasuk hasil kosong; PDF 0 halaman gagal.
 - Identitas mengacu pada judul utama/front matter dengan normalisasi kapitalisasi,
   spasi, tanda baca, dan baris terbungkus. DOI/judul dalam isi atau References
   tidak membuktikan identitas. DOI utama bertentangan/layout ambigu memerlukan
   review. Parser deterministik konservatif tidak membuktikan pemahaman ilmiah.
 - File tersedia, dapat dibaca, lengkap, legal/gratis, diperiksa penuh, dan
   kutipan terverifikasi merupakan status terpisah. FULL_TEXT bukan bukti.
+  Kandidat evidence otomatis dari body mulai UNAVAILABLE; hanya recheck kutipan
+  yang lulus bersama examination artefak dapat memberi reading_depth FULL_TEXT.
+  extraction_method mencatat jalur ekstraksi, bukan jaminan reading assurance.
+  Kandidat tetap BACKGROUND/WEAK, confidence rendah, dan wajib review.
 
 examination, eligibility_review, content_inspection, rights_inspection berada
 di source.metadata, mengikat source_id, artifact_sha256, reviewer, reviewed_at,
 serta sections berisi excerpt dan lokasi nyata. Examination scope: full
 memerlukan kutipan berbeda yang mencakup metode, hasil, dan pembahasan/kesimpulan
-pada artefak yang sama. Tiga string locator tidak cukup. Eligibility memakai
+pada artefak yang sama. Label kompatibilitas fully_read berarti examined required
+sections, bukan seluruh halaman telah dipahami. full_text menggunakan heuristik
+struktur/cakupan; PDF dengan halaman kosong/tidak terbaca memerlukan pemeriksaan.
+Tiga string locator tidak cukup. Eligibility memakai
 decision: eligible serta criterion construct, population, design berlokasi.
 Rights inspection legal_free: true mengacu pada bukti lisensi/akses nyata.
 Content inspection scope: completeness, document_kind: full_text untuk layout
@@ -129,3 +149,73 @@ Periksa run_summary.json, snapshot audit sitasi/fakta/gaya, document_quality,
 review queue, claim_screening, status workbook, artefak aktual, hash, dan ZIP
 berdasarkan run_id. Jangan membaca final.docx/run lama sebagai hasil terbaru.
 Manifest checksum ZIP terpisah menghindari circular checksum.
+
+
+## Kontrak operasional QC 3 November 2026
+
+- Engine menjalankan validasi deterministik. Agent pengarah menilai relevansi,
+  metode, dan makna klaim. ModelRouter dan ContextLoader belum menjadi jalur
+  penalaran workflow utama. Provider model opsional. Telemetri engine tidak
+  mengukur token/biaya/waktu berpikir agent luar; jangan mengklaim persentase hemat.
+- `python -m src check` memeriksa kesehatan struktural. Gunakan
+  `python -m src check --for research` (atau `run-academic`, `finalize`, `plan`)
+  untuk kesiapan konfigurasi per perintah. Konfigurasi siap bukan integrasi VERIFIED.
+- Monitor hanya loopback. `GET /api/check` dan `GET /api/plan` ditolak.
+  Gunakan `POST /api/check`, `POST /api/plan`, `POST /api/run-academic` dengan
+  header `X-Autonomi-Token` dari instalasi lokal. Jangan menonaktifkan Host/Origin/token.
+- Review klaim harus menamai reviewer sebenarnya. Contoh AI:
+  `python -m src review-queue <project> --resolve <exact_review_id> --decision SUPPORTED --notes "alasan berdasarkan bukti" --reviewer "nama-agent" --reviewer-type ai`.
+  Pakai `human` hanya untuk pemeriksa manusia yang benar-benar melakukan penilaian.
+  Jangan menyatakan gelar pakar atau persetujuan manusia tanpa bukti.
+- Review JSON eksternal wajib mengisi `input_fingerprint` yang dihitung dengan
+  `SemanticReview.fingerprint(claim, evidence, sources)` atas isi yang benar-benar
+  dinilai. Nilai ini adalah pengikatan versi, bukan bukti penilaian manusia.
+  Review legacy tanpa fingerprint harus dinilai ulang; jangan diisi retroaktif.
+- `evidence.jsonl` menyimpan history. `current_evidence.json` menjadi input finalisasi
+  terkini; snapshot immutable tiap run tetap tersedia. Revisi isi evidence perlu
+  ID baru. Ulang input yang sama tidak menambah baris history.
+- `search_options` menerima `queries`, `concepts`, `year_start`, `year_end`,
+  `source_types`, `max_results_per_query` (1–200), `target_sources` (1–1000), dan
+  `request_budget` (1–100). Crossref mendukung pagination offset sampai anggaran
+  habis. Provider lain satu halaman per query. Seluruh kandidat dan alasan filter
+  disimpan; lexical ranking bukan persetujuan relevansi ilmiah.
+- Kapasitas lokal: dua workflow aktif lintas proses dan 16 request HTTP.
+  Deadline kooperatif 900 detik diperiksa saat agent/tool/verifikasi berikutnya
+  dimulai. Panggilan yang sedang berjalan tetap memakai timeout tool sendiri.
+  Kapasitas penuh ditolak, bukan antrean tak berbatas. Lock proses terputus
+  harus diperiksa sebelum pemulihan manual. Belum merupakan bukti soak produksi.
+
+
+### Koreksi empat temuan review ulang
+
+- Gate dukungan sumber memakai pemetaan alias publikasi yang sama dengan dedupe,
+  termasuk record lintas provider tanpa DOI. DOI atau ISBN yang saling bertentangan
+  tidak boleh digabung otomatis. Metadata bibliografis yang belum lengkap tetap
+  memerlukan pemeriksaan; pencocokan identitas deterministik bukan review ilmiah.
+- Konflik evidence ID diperiksa sebelum mengganti berkas input terkini. Penolakan
+  revisi mempertahankan input sebelumnya. Revisi sah memakai evidence ID baru dan
+  run immutable baru; jangan mengubah isi dengan ID lama untuk membuka blocker.
+- Jika `search_options.concepts` diberikan, target discovery menghitung publikasi
+  unik yang memuat seluruh konsep pada judul/abstrak (pencocokan literal tanpa
+  membedakan huruf besar/kecil). Kandidat lain tetap disimpan untuk screening,
+  tetapi tidak membuat target terpenuhi. Sinonim/variasi query harus dinyatakan
+  oleh agent pengarah; kecocokan literal bukan persetujuan relevansi ilmiah.
+- Tanpa konsep terstruktur, target masih berdasarkan filter tahun/jenis. Review
+  kuantitatif memakai target discovery awal sedikitnya 40 kandidat, kecuali
+  `target_sources` ditentukan eksplisit. Log menyatakan `target_candidate_count`
+  dan `target_criteria`; tetap periksa jumlah sumber yang benar-benar layak.
+
+### Integritas run saat ekspor
+
+Run baru menyimpan `integrity_manifest.json` dengan hash dan lokasi relatif.
+Ekspor menolak snapshot/sumber/output yang berubah, hilang, bertambah, atau
+belum memiliki manifest penutupan. Run lama tanpa manifest perlu revisi/resume
+menjadi run baru; jangan menambahkan hash retroaktif. Lokasi relatif artefak
+memungkinkan ekspor proyek lengkap setelah dipindahkan. Ekspor tidak mengubah
+run sumber; manifest ZIP terpisah berada dalam `exports/`.
+
+Kegagalan snapshot awal menyertakan identitas run dan status gagal pada respons.
+Ringkasan gagal dan workbook tersedia bila media dapat ditulis; kegagalan tulis
+yang berlanjut dilaporkan jujur dan memerlukan pemeriksaan penyimpanan. Ini
+bukan jaminan transaksi atomik seluruh berkas, ketahanan hard crash, atau bukti
+anti-manipulasi jika manifest dan berkas sama-sama diganti.

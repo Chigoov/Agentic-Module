@@ -436,6 +436,8 @@ class FactAuditAgent(BaseAgent[FactAuditRequest, FactAuditResponse]):
                 claim_rejections.append("consequential claim has no semantic review record")
                 structural_failures.append(claim.id)
             elif review:
+                if not review.input_fingerprint or review.input_fingerprint != SemanticReview.fingerprint(claim, request.evidence, request.sources):
+                    claim_rejections.append("semantic review input fingerprint is missing or stale; reassessment required")
                 decision = str(review.decision)
                 reason = review.reason or ""
                 if review.decision in {SemanticDecision.SUPPORTED, SemanticDecision.PARTIALLY_SUPPORTED, "SUPPORTED", "PARTIALLY_SUPPORTED"}:

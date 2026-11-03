@@ -47,7 +47,7 @@ class MockBookProvider(ResearchTool):
         return list(self._sample_sources), len(self._sample_sources), "https://mock.test/api", "{}"
 
 
-def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path) -> None:
+def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path, synthetic_verifier) -> None:
     project = _make_project(tmp_path, "ocean_plastic_proj")
     project.output_type = "literature_review"
 
@@ -92,56 +92,29 @@ def test_research_pipeline_end_to_end_from_raw_topic(tmp_path: Path) -> None:
             project=project,
             user_request="Microplastics impact on marine ecosystems",
             providers=[provider],
+            verification_engine=synthetic_verifier,
             generate_docx=True,
         )
     )
 
-    assert response.success is True
-    assert response.draft_path is not None
-    assert Path(response.draft_path).is_file()
-    assert response.docx_path is None
+    assert response.success is False and response.needs_human_review
+    assert response.docx_path is None and response.draft_path is None
     assert response.metadata["finalization_allowed"] is False
     assert response.metadata["result_status"] == "PARTIAL"
-
-    # Verify stages executed
-    expected_stages = [
-        "deep_plan",
-        "task_analysis",
-        "planning",
-        "discovery",
-        "deduplication",
-        "ranking",
-        "verification",
-        "access_check",
-        "retrieval",
-        "evidence_extraction",
-        "claim_verification",
-        "conflict_detection",
-        "synthesis",
-        "writing",
-        "citation_audit",
-        "fact_audit",
-    ]
-    for stg in expected_stages:
-        assert stg in response.stages
-
-    # Verify citation map artifact
-    assert response.citation_map_path is not None
-    map_data = json.loads(Path(response.citation_map_path).read_text(encoding="utf-8"))
-    assert "citations" in map_data
-    assert len(map_data["citations"]) >= 1
-
-    # Verify disambiguated citation labels
-    draft_content = Path(response.draft_path).read_text(encoding="utf-8")
-    assert "Thompson" in draft_content
+    assert "evidence_extraction" in response.stages and "human_review" in response.stages
+    assert "writing" not in response.stages
+    candidates = read_jsonl(project.artifact_path(ProjectArtifact.EVIDENCE))
+    assert candidates and all(e["evidence_type"] == "BACKGROUND" and e["strength"] == "WEAK" for e in candidates)
+    assert ReviewQueue.load(project.artifact_path(ProjectArtifact.REVIEW_QUEUE)).blocking_items()
 
     # Check progress logging was performed
     prog = read_progress()
-    stages_logged = {p["stage"] for p in prog}
+    stages_logged = {p["stage"] for p in prog if p.get("project_path") == str(project.directory)}
     assert "task_analysis" in stages_logged
     assert "discovery" in stages_logged
     assert "retrieval" in stages_logged
-    assert "writing" in stages_logged
+    assert "human_review" in stages_logged
+    assert "writing" not in stages_logged
 
 
 def test_research_pipeline_halts_on_critical_human_review(tmp_path: Path) -> None:
@@ -316,7 +289,7 @@ def test_default_discovery_providers_configuration() -> None:
     assert len(providers) == 3
 
 
-def test_workflow_uses_default_discovery_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workflow_uses_default_discovery_providers(tmp_path: Path, enabled_research_tools, monkeypatch: pytest.MonkeyPatch) -> None:
     """Validate DeepResearchWorkflow queries default discovery providers when request.providers is omitted.
 
     Validates: Requirements 3.2, 3.3, 3.4
@@ -362,7 +335,7 @@ def test_workflow_uses_default_discovery_providers(tmp_path: Path, monkeypatch: 
     assert CrossrefTool in executed_providers
 
 
-def test_artifact_store_persistence_and_run_directory_structure(tmp_path: Path) -> None:
+def test_artifact_store_persistence_and_run_directory_structure(tmp_path: Path, synthetic_verifier) -> None:
     """Verify artifact store persistence and run directory structure during research workflow execution.
 
     Validates: Requirements 4.2
@@ -413,12 +386,13 @@ def test_artifact_store_persistence_and_run_directory_structure(tmp_path: Path) 
             project=project,
             user_request="Strategi adaptasi berbasis komunitas dan ketahanan pangan",
             providers=[provider],
+            verification_engine=synthetic_verifier,
             min_sources=2,
             generate_docx=False,
         )
     )
 
-    assert response.success is True
+    assert response.success is False and response.needs_human_review
 
     # 1. Verify persistence of candidates.jsonl containing raw search results
     cand_path = project.artifact_path(ProjectArtifact.CANDIDATES)
@@ -461,8 +435,6 @@ def test_artifact_store_persistence_and_run_directory_structure(tmp_path: Path) 
         "claims_snapshot.json",
         "evidence_snapshot.json",
         "outline_snapshot.json",
-        "citation_audit_snapshot.json",
-        "fact_audit_snapshot.json",
         "run_summary.json",
     ]
     for snapshot_name in expected_snapshots:
@@ -481,9 +453,9 @@ def test_artifact_store_persistence_and_run_directory_structure(tmp_path: Path) 
     assert summary_data["started_at"] is not None
     assert summary_data["command"] == "research"
     assert "stages" in summary_data
-    assert "writing" in summary_data["stages"]
-    assert "citation_audit" in summary_data["stages"]
-    assert "fact_audit" in summary_data["stages"]
+    assert "human_review" in summary_data["stages"] and "writing" not in summary_data["stages"]
+    assert "citation_audit" not in summary_data["stages"]
+    assert "fact_audit" not in summary_data["stages"]
 
 
 def test_cli_deep_research_persisted_artifacts_integrity() -> None:
@@ -855,7 +827,7 @@ def test_property_7_consequential_claim_fact_audit_gate_and_publication_halting(
     input_payload = {
         "project": {
             "name": "cli_prop7_proj",
-            "workspace": "tmp",
+            "workspace": "TUGAS 1",
             "path": str(tmp_path / "cli_prop7_proj"),
             "title": "CLI Prop 7 Test",
         },
@@ -871,7 +843,18 @@ def test_property_7_consequential_claim_fact_audit_gate_and_publication_halting(
     from src.tools.verification_tool import VerificationEngine
     monkeypatch.setattr("src.runtime.cli.VerificationEngine", lambda: VerificationEngine(providers=[]))
 
-    cli_exit_code = main(["research", "--input-json", str(payload_file)])
+    from src.core.paths import reset_paths_cache
+    from src.core.config import reset_config_cache
+    workspace = tmp_path / "cli_workspaces"
+    (workspace / "TUGAS 1").mkdir(parents=True)
+    with monkeypatch.context() as local:
+        local.setenv("AUTONOMI_SYSTEM_ROOT", str(Path(__file__).resolve().parents[1]))
+        local.setenv("AUTONOMI_WORKSPACE_ROOT", str(workspace))
+        reset_paths_cache(); reset_config_cache()
+        try:
+            cli_exit_code = main(["research", "--input-json", str(payload_file)])
+        finally:
+            reset_paths_cache(); reset_config_cache()
     assert cli_exit_code == 1, "CLI deep research command must exit with code 1 on fact audit failure"
 
 

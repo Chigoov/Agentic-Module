@@ -144,6 +144,23 @@ def check_academic_integrity(
             result.violations.append(
                 f"source {source_id} cited but never verified (state={source.state})"
             )
+    # Re-evaluate the shared support rule using only verified, attached evidence.
+    from src.workflows.evidence_flow import evaluate_claim
+    from src.tools.dedupe import deduplicate
+    identities: dict[str, str | None] = {}
+    # Count publication aliases without altering the original verified snapshots.
+    deduplicate((source.model_copy(deep=True) for source in sources), identities=identities)
+    for claim in claims:
+        if not claim.is_writable:
+            continue
+        attached = [e for e in evidence if e.claim_id == claim.id
+            and e.id in claim.supporting_evidence + claim.contradicting_evidence
+            and e.source_id in claim.supporting_sources
+            and (source := source_by_id.get(e.source_id)) is not None
+            and is_verified(source.state) and stored_metadata(source) and identities.get(e.source_id) is not None]
+        verdict = evaluate_claim(claim, [e.model_copy(update={"source_id": identities[e.source_id]}) for e in attached])
+        if str(verdict.status) in {"INSUFFICIENT_EVIDENCE", "REFUTED", "CONFLICTED"} and str(claim.status) != str(verdict.status):
+            result.violations.append(f"claim {claim.id} support evaluation: {verdict.reason}")
     # -- 4. Important claims must have supporting evidence.
     for claim in claims:
         if claim.is_important and not claim.supporting_evidence:

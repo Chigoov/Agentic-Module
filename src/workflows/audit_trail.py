@@ -31,7 +31,8 @@ from pathlib import Path
 from typing import Any
 import uuid
 
-from src.core.storage import write_json
+from src.core.storage import ensure_within, write_json
+from src.core.errors import ProjectError
 from src.schemas.claim import Claim
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
@@ -44,6 +45,18 @@ __all__ = [
 ]
 
 _EXCLUDED_KEYS = frozenset({"internal_tokens", "tokens"})
+
+
+def write_run_summary(run_dir: Path, summary: dict[str, Any]) -> None:
+    """Close an engine-authored run with portable hashes, never during export."""
+    write_json(run_dir / "run_summary.json", sanitize_snapshot(summary), root=run_dir, overwrite=True)
+    files = {}
+    for path in sorted(run_dir.rglob("*")):
+        if path.is_file() and path.relative_to(run_dir).as_posix() not in {".active", "integrity_manifest.json"}:
+            content = ensure_within(path, run_dir).read_bytes()
+            files[path.relative_to(run_dir).as_posix()] = {"sha256": hashlib.sha256(content).hexdigest(), "size": len(content)}
+    # ponytail: local hashes detect drift, not an attacker replacing both files and manifest; sign externally if needed.
+    write_json(run_dir / "integrity_manifest.json", {"version": 1, "run_id": run_dir.name, "files": files}, root=run_dir, overwrite=True)
 _SENSITIVE_KEY_SUBSTRINGS = (
     "api_token",
     "access_token",
@@ -171,8 +184,6 @@ class AcademicRunAudit:
         run_id = f"run_{timestamp_slug}_{short_id}"
 
         run_dir = project.run_path(run_id)
-        run_dir.mkdir(parents=True, exist_ok=True)
-
         audit = cls(
             project=project,
             run_id=run_id,
@@ -182,12 +193,28 @@ class AcademicRunAudit:
             input_path=input_path,
         )
 
-        audit._record_input_snapshots(
-            claims=claims,
-            evidence=evidence,
-            sources=sources,
-            outline=outline,
-        )
+        try:
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / ".active").write_text(started_at, encoding="utf-8")
+            audit._record_input_snapshots(claims=claims, evidence=evidence, sources=sources, outline=outline)
+        except Exception as exc:
+            message = f"Failed to initialize run: {exc}"
+            metadata = {"execution_success": False, "result_status": "FAILED", "finalization_allowed": False, "needs_human_review": True}
+            try:
+                audit.finish(success=False, error_message=message, result_metadata=metadata, findings_sources=sources)
+            except Exception as recovery_error:
+                message += f"; failure report incomplete: {recovery_error}"
+                try:
+                    write_run_summary(run_dir, {"run_id": run_id, "started_at": started_at,
+                        "finished_at": datetime.now(timezone.utc).isoformat(), "success": False,
+                        "command": command, "error_message": message, "artifacts": [], **metadata})
+                except Exception as summary_error:
+                    message += f"; failure summary unavailable: {summary_error}"
+            try:
+                (run_dir / ".active").unlink(missing_ok=True)
+            except OSError as marker_error:
+                message += f"; active marker cleanup failed: {marker_error}"
+            raise ProjectError(message, run_id=run_id, run_dir=str(run_dir)) from exc
         return audit
 
     def _record_input_snapshots(
@@ -307,6 +334,8 @@ class AcademicRunAudit:
         checksum_manifest_path: str | None = None,
         error_message: str | None = None,
         result_metadata: dict[str, Any] | None = None,
+        findings_sources: list[Source] | None = None,
+        workbook_template: str | None = None,
     ) -> dict[str, Any]:
         """Finalize the run, snapshot audit reports if present, and write run_summary.json."""
         finished_at = datetime.now(timezone.utc).isoformat()
@@ -405,9 +434,25 @@ class AcademicRunAudit:
         run_summary.setdefault("execution_success", success)
         run_summary.setdefault("result_status", "PASS" if success else "FAILED")
         run_summary.setdefault("finalization_allowed", success)
+        from src.workflows.user_outputs import findings_workbook, work_report
+        sources = (sanitize_snapshot([source.model_dump(mode="json") for source in findings_sources])
+                   if findings_sources is not None else json.loads((self.run_dir / "sources_snapshot.json").read_text(encoding="utf-8")))
+        if findings_sources is not None:
+            write_json(self.run_dir / "findings_sources.json", sources, root=self._root, overwrite=True)
+        findings_path = findings_workbook(self.run_dir / "review", sources, existing=quantitative_workbook_path, template=workbook_template)
+        problems = [str(item) for item in run_summary.get("review_findings", [])]
+        if error_message:
+            problems.append(error_message)
+        report_path = work_report(self.run_dir / "review" / "laporan_pekerjaan.xlsx",
+            purpose=self.project.user_request or self.project.title, status=run_summary["result_status"],
+            stages=stages, findings=len(sources), problems=problems,
+            outputs=[Path(p).name for p in (final_draft_path, final_docx_path) if p])
+        run_summary.update(findings_workbook_path=findings_path, work_report_path=report_path)
         artifacts = []
         for filename, source_path in (("draft.md", final_draft_path), ("final.docx", final_docx_path),
-            ("quantitative_review.xlsx", quantitative_workbook_path), ("quantitative_review_report.md", quantitative_report_path)):
+            ("quantitative_review.xlsx", quantitative_workbook_path), ("quantitative_review_report.md", quantitative_report_path),
+            ("hasil_temuan.xlsx", findings_path) if not quantitative_workbook_path else ("", None),
+            ("laporan_pekerjaan.xlsx", report_path)):
             if not source_path or not Path(source_path).is_file():
                 continue
             source_file = Path(source_path).resolve()
@@ -418,14 +463,10 @@ class AcademicRunAudit:
                 target = self.run_dir / "artifacts" / filename
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_file, target)
-            artifacts.append({"path": str(target), "name": filename, "size": target.stat().st_size,
+            artifacts.append({"path": str(target), "relative_path": target.relative_to(self.run_dir).as_posix(), "name": filename, "size": target.stat().st_size,
                 "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
         run_summary["artifacts"] = artifacts
-        write_json(
-            self.run_dir / "run_summary.json",
-            sanitize_snapshot(run_summary),
-            root=self._root,
-            overwrite=True,
-        )
+        write_run_summary(self.run_dir, run_summary)
 
+        (self.run_dir / ".active").unlink(missing_ok=True)
         return run_summary

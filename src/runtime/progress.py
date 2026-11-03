@@ -54,18 +54,55 @@ def read_progress(root: str | Path | None = None, *, limit: int | None = 100, jo
     path = progress_file(root)
     if not path.is_file():
         return []
-    # ponytail: scan the append-only log; use a per-job index if history grows large.
-    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    if limit is not None and limit <= 0:
+        return []
     events = []
-    for index, line in enumerate(lines):
-        if not line.strip():
-            continue
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            if index == len(lines) - 1 and not line.endswith("\n"):
-                break  # Another process can still be writing its final line.
-            raise
-        if job_id is None or event.get("job_id") == job_id:
-            events.append(event)
-    return events[-limit:] if limit is not None else events
+    # ponytail: bounded reverse tail; rare jobs may scan farther, add an index only if measured necessary.
+    with path.open("rb") as stream:
+        stream.seek(0, 2)
+        position = stream.tell()
+        pending = b""
+        first = True
+        while position:
+            size = min(position, 65536)
+            position -= size
+            stream.seek(position)
+            lines = (stream.read(size) + pending).split(b"\n")
+            pending = lines.pop(0)
+            for line in reversed(lines):
+                if first:
+                    first = False
+                    # An unfinished final line belongs to a concurrent writer.
+                    if line:
+                        continue
+                if not line.strip():
+                    continue
+                event = json.loads(line)
+                if job_id is None or event.get("job_id") == job_id:
+                    events.append(event)
+                    if limit is not None and len(events) >= limit:
+                        return list(reversed(events))
+        if pending.strip() and not first:
+            event = json.loads(pending)
+            if job_id is None or event.get("job_id") == job_id:
+                events.append(event)
+    return list(reversed(events))
+
+
+def progress_since(root=None, *, offset=0):
+    """Read complete appended records and retain the unfinished-line offset."""
+    path = progress_file(root)
+    if not path.exists():
+        return [], 0
+    events = []
+    with path.open("rb") as stream:
+        if offset > stream.seek(0, 2):
+            offset = 0
+        stream.seek(offset)
+        while line := stream.readline():
+            if not line.endswith(b"\n"):
+                break
+            if line.strip():
+                events.append(json.loads(line))
+            offset = stream.tell()
+    return events, offset

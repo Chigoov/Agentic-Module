@@ -69,7 +69,7 @@ Sebelum melakukan manipulasi apa pun, agen wajib menjalankan health check sistem
 .\aai.bat check
 # atau: python -m src check
 ```
-Pastikan menghasilkan `[OK] System health check passed` (Exit Code: 0).
+Pastikan kesehatan struktural lulus, lalu periksa kesiapan perintah yang diperlukan.
 
 ### Langkah 2: Penelusuran Sumber Ilmiah Nyata (Internet Tool Agen)
 Agen diperbolehkan dan **diwajibkan menggunakan tools internet search miliknya sendiri** untuk menelusuri literatur ilmiah asli:
@@ -181,6 +181,11 @@ Aturan tabel, daftar, dan heading:
 
 ## 7. Batasan Sistem dan Keterbukaan Ilmiah (Honest Reporting)
 
+Setiap tugas AAI menyerahkan dua Excel: workbook temuan sesuai template standar
+dan laporan pekerjaan ringkas (tujuan, pekerjaan, hasil, kendala, langkah
+berikutnya). Gunakan path aktual pada respons; jelaskan bila file tidak dapat
+dibuat. Jika tidak ada artikel, katakan demikian dan jangan mengarang isinya.
+
 * **Jangan Pernah Mengklaim "100% Anti-Halusinasi":**  
   Gunakan bahasa yang presisi dan jujur:
   - *"Empat bypass integritas yang diuji telah tertutup secara deterministik."*
@@ -188,3 +193,77 @@ Aturan tabel, daftar, dan heading:
   - *"Evidence verbatim dicocokkan secara persis dengan abstrak/teks sumber yang tersedia."*
 * **Kebutuhan Human-in-the-Loop:**  
   Python Engine memvalidasi integritas mekanis dan tekstual. Namun, evaluasi kesesuaian makna ilmiah yang mendalam (*semantic fit*) atas apakah sebuah premis riset benar-benar memvalidasi kesimpulan tetap mengandalkan agen penalaran AI dan **tetap membutuhkan verifikasi akhir oleh pakar manusia (*human review*)** sebelum naskah dipublikasikan secara akademik.
+
+
+## Kontrak operasional QC 3 November 2026
+
+- Engine menjalankan validasi deterministik. Agent pengarah menilai relevansi,
+  metode, dan makna klaim. ModelRouter dan ContextLoader belum menjadi jalur
+  penalaran workflow utama. Provider model opsional. Telemetri engine tidak
+  mengukur token/biaya/waktu berpikir agent luar; jangan mengklaim persentase hemat.
+- `python -m src check` memeriksa kesehatan struktural. Gunakan
+  `python -m src check --for research` (atau `run-academic`, `finalize`, `plan`)
+  untuk kesiapan konfigurasi per perintah. Konfigurasi siap bukan integrasi VERIFIED.
+- Monitor hanya loopback. `GET /api/check` dan `GET /api/plan` ditolak.
+  Gunakan `POST /api/check`, `POST /api/plan`, `POST /api/run-academic` dengan
+  header `X-Autonomi-Token` dari instalasi lokal. Jangan menonaktifkan Host/Origin/token.
+- Review klaim harus menamai reviewer sebenarnya. Contoh AI:
+  `python -m src review-queue <project> --resolve <exact_review_id> --decision SUPPORTED --notes "alasan berdasarkan bukti" --reviewer "nama-agent" --reviewer-type ai`.
+  Pakai `human` hanya untuk pemeriksa manusia yang benar-benar melakukan penilaian.
+  Jangan menyatakan gelar pakar atau persetujuan manusia tanpa bukti.
+- Review JSON eksternal wajib mengisi `input_fingerprint` yang dihitung dengan
+  `SemanticReview.fingerprint(claim, evidence, sources)` atas isi yang benar-benar
+  dinilai. Nilai ini adalah pengikatan versi, bukan bukti penilaian manusia.
+  Review legacy tanpa fingerprint harus dinilai ulang; jangan diisi retroaktif.
+- `evidence.jsonl` menyimpan history. `current_evidence.json` menjadi input finalisasi
+  terkini; snapshot immutable tiap run tetap tersedia. Revisi isi evidence perlu
+  ID baru. Ulang input yang sama tidak menambah baris history.
+- `search_options` menerima `queries`, `concepts`, `year_start`, `year_end`,
+  `source_types`, `max_results_per_query` (1–200), `target_sources` (1–1000), dan
+  `request_budget` (1–100). Crossref mendukung pagination offset sampai anggaran
+  habis. Provider lain satu halaman per query. Seluruh kandidat dan alasan filter
+  disimpan; lexical ranking bukan persetujuan relevansi ilmiah.
+- Kapasitas lokal: dua workflow aktif lintas proses dan 16 request HTTP.
+  Deadline kooperatif 900 detik diperiksa saat agent/tool/verifikasi berikutnya
+  dimulai. Panggilan yang sedang berjalan tetap memakai timeout tool sendiri.
+  Kapasitas penuh ditolak, bukan antrean tak berbatas. Lock proses terputus
+  harus diperiksa sebelum pemulihan manual. Belum merupakan bukti soak produksi.
+
+
+### Koreksi empat temuan review ulang
+
+- Gate dukungan sumber memakai pemetaan alias publikasi yang sama dengan dedupe,
+  termasuk record lintas provider tanpa DOI. DOI atau ISBN yang saling bertentangan
+  tidak boleh digabung otomatis. Metadata bibliografis yang belum lengkap tetap
+  memerlukan pemeriksaan; pencocokan identitas deterministik bukan review ilmiah.
+- Konflik evidence ID diperiksa sebelum mengganti berkas input terkini. Penolakan
+  revisi mempertahankan input sebelumnya. Revisi sah memakai evidence ID baru dan
+  run immutable baru; jangan mengubah isi dengan ID lama untuk membuka blocker.
+- Jika `search_options.concepts` diberikan, target discovery menghitung publikasi
+  unik yang memuat seluruh konsep pada judul/abstrak (pencocokan literal tanpa
+  membedakan huruf besar/kecil). Kandidat lain tetap disimpan untuk screening,
+  tetapi tidak membuat target terpenuhi. Sinonim/variasi query harus dinyatakan
+  oleh agent pengarah; kecocokan literal bukan persetujuan relevansi ilmiah.
+- Tanpa konsep terstruktur, target masih berdasarkan filter tahun/jenis. Review
+  kuantitatif memakai target discovery awal sedikitnya 40 kandidat, kecuali
+  `target_sources` ditentukan eksplisit. Log menyatakan `target_candidate_count`
+  dan `target_criteria`; tetap periksa jumlah sumber yang benar-benar layak.
+
+### Integritas ekspor dan kegagalan awal
+
+- Run baru ditutup dengan `integrity_manifest.json`: daftar berkas relatif,
+  ukuran, dan SHA-256 snapshot, sumber tersimpan, laporan, serta ringkasan.
+  Ekspor memvalidasi daftar dan hash tersebut sebelum membuat ZIP. Jangan
+  mengubah atau menghitung ulang manifest untuk menerima bukti yang berubah.
+- Run lama tanpa manifest tidak diberi bukti integritas secara retroaktif.
+  Jalankan revisi/resume untuk menghasilkan run baru, lalu ekspor run baru itu.
+  Hash lokal mendeteksi perubahan terhadap catatan penutupan; bukan tanda tangan
+  independen jika seseorang mengganti berkas dan manifest sekaligus.
+- Lokasi artefak relatif terhadap run dipakai saat ekspor, sehingga proyek
+  lengkap dapat dipindah tanpa mengakses lokasi lama. Ekspor tidak mengubah
+  isi run; checksum ZIP dicatat di manifest terpisah dalam `exports/`.
+- Kegagalan snapshot awal mengembalikan `run_id`, `run_dir`, status gagal dan
+  kebutuhan review; penanda aktif ditutup. Ringkasan gagal dan workbook dibuat
+  bila penyimpanan masih dapat ditulis. Jika penyimpanan terus gagal, respons
+  menyebutkan laporan yang tidak dapat disimpan; jangan mengklaim pemulihan
+  hard crash atau media rusak telah teruji.

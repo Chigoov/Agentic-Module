@@ -78,7 +78,7 @@ class PubMedTool(ResearchTool):
             "retmax": request.max_results,
             "retmode": "json",
         }
-        esearch = client.get_json(self._ESEARCH_URL, params=esearch_params)
+        esearch = client.get_json(self._endpoint(self._ESEARCH_URL, "/esearch.fcgi"), params=esearch_params)
         esearch_payload = esearch.json()
         idlist = (esearch_payload.get("esearchresult") or {}).get("idlist") or []
 
@@ -95,7 +95,7 @@ class PubMedTool(ResearchTool):
             "id": ",".join(str(pid) for pid in idlist),
             "retmode": "json",
         }
-        esummary = client.get_json(self._ESUMMARY_URL, params=esummary_params)
+        esummary = client.get_json(self._endpoint(self._ESUMMARY_URL, "/esummary.fcgi"), params=esummary_params)
         summary_payload = esummary.json()
         result_map = summary_payload.get("result") or {}
         uids = result_map.get("uids") or []

@@ -227,6 +227,5 @@ def test_skills_and_steering_files_exist() -> None:
     assert (ref_dir / "docx-and-table-guard.md").is_file()
     assert (ref_dir / "audit-checklist.md").is_file()
 
-    # Workspace steering file
-    steering_file = root.parent / ".kiro" / "steering" / "human-doc-output-guard.md"
-    assert steering_file.is_file(), ".kiro/steering/human-doc-output-guard.md must exist"
+    # The checkout owns this policy; optional workspace-local IDE steering is not distributable.
+    assert "human-doc-output-guard" in (root / "AGENTS.md").read_text(encoding="utf-8")

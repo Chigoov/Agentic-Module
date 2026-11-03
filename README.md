@@ -74,11 +74,37 @@ and hold project-specific research artifacts and final outputs.
 - `pydantic==2.13.4`, `PyYAML==6.0.3`, `python-dotenv==1.2.2`
 - `pytest==9.1.1` (for tests)
 
-Install:
+Cara penggunaan yang didukung adalah checkout repositori lengkap, lalu jalankan
+perintah dari root checkout yang memuat `src/`, `config/`, spec, dan template.
+Wheel/pip install paket AAI saja dan ZIP skill bukan runtime mandiri.
+
+Install dependency di checkout:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+Snapshot verifikasi lama tetap tersimpan sebagai audit, tetapi harus diperbarui
+bila tidak memiliki signature engine lokal, sudah lebih dari satu hari, atau
+identitas/kebijakannya berubah. Provider `enabled: false` tidak dipanggil; aktifkan
+provider yang dibutuhkan secara eksplisit. `base_url` Crossref/OpenAlex/Semantic
+Scholar adalah root API, PubMed adalah root `entrez/eutils`, sedangkan DOAB dan
+OpenLibrary menggunakan URL search lengkap. Retry discovery dan DOI verification
+diatur pada konfigurasi transport; `DeepResearchRequest.max_retries` hanya menerima
+0 karena replay workflow tidak didukung.
+
+`success` menandakan eksekusi; gunakan `result_status`, `finalization_allowed`,
+dan review queue untuk menentukan kesiapan final. Kandidat kalimat otomatis
+berlabel BACKGROUND/WEAK dan perlu penilaian metode/hasil. `fully_read` adalah
+label kompatibilitas untuk cakupan bagian yang diperiksa, bukan jaminan memahami
+semua halaman. Workflow research/write saat ini deterministik dengan review;
+router model tersedia terpisah dan belum terhubung ke reasoning utama atau
+memvalidasi `output_schema` domain. Integrasi model/Hermes perlu qualification
+tersendiri.
+
+Jika proses terputus dan `.aai-active.lock` tertinggal, pastikan proses pemilik
+sudah berhenti dan audit run telah diperiksa sebelum memulihkan lock secara manual.
+Prune mempertahankan run aktif, run belum terminal, dan folder non-run.
 
 ---
 
@@ -194,6 +220,13 @@ bind criterion scores to that artifact and the template rubric. Metadata
 verification snapshots are written by the existing verification engine and
 reused only while their identity and integrity can be checked. Legacy records
 without these proofs remain candidates requiring verification.
+
+`WEB_RESOURCE` may contain complete HTML checked by the shared inspector and
+open reading-rights guard; landing pages remain partial. Automatic book/chapter
+retrieval still requires a readable PDF with no unexamined pages and open rights.
+Neither format nor access alone establishes scientific eligibility or full reading.
+See [PR #1 follow-up checks](docs/PR1-FOLLOWUP-2026-10-11.md) for the repair scope
+and the remaining qualification limits.
 
 Run the local workflow monitor:
 

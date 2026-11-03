@@ -41,7 +41,7 @@ class EvidenceRegistry:
         self.project = project
         self.evidence: dict[str, Evidence] = {}
         for item in evidence or ():
-            self.evidence[item.id] = item
+            self.add(item)
 
     def _artifact_path(self) -> Path:
         return self.project.artifact_path(ProjectArtifact.EVIDENCE)
@@ -71,18 +71,21 @@ class EvidenceRegistry:
         return list(self.evidence.values())
 
     # ---------------------------------------------------------------- persist
-    def save(self, *, new_only: bool = True) -> int:
-        """Append evidence to ``evidence.jsonl``.
+    def pending(self) -> list[Evidence]:
+        """Validate immutable IDs before any caller publishes a new current view."""
+        records = read_jsonl(self._artifact_path())
+        existing = {item["id"] for item in records}
+        # ponytail: revisions use new IDs; history is never silently rewritten.
+        fields = ("claim_id", "source_id", "evidence_text", "location", "relationship", "evidence_type", "strength", "extraction_method")
+        current = {sid: evidence.model_dump(mode="json") for sid, evidence in self.evidence.items()}
+        for old in records:
+            if old["id"] in current and any(old.get(k) != current[old["id"]].get(k) for k in fields):
+                raise ProjectError(f"Evidence {old['id']} changed; assign a new evidence ID for revision")
+        return [e for e in self.evidence.values() if e.id not in existing]
 
-        Because the artifact is append-only, only records not yet on disk are
-        written. Pass ``new_only=False`` to rewrite the entire file (used only
-        after a load/merge cycle, and never for silent overwrite of history).
-        """
-        if new_only:
-            existing = {item["id"] for item in read_jsonl(self._artifact_path())}
-            pending = [e for e in self.evidence.values() if e.id not in existing]
-        else:
-            pending = list(self.evidence.values())
+    def save(self, *, new_only: bool = True) -> int:
+        """Append new evidence only after checking all existing IDs for conflicts."""
+        pending = self.pending() if new_only else list(self.evidence.values())
 
         if not pending:
             return 0

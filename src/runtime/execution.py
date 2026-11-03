@@ -6,6 +6,12 @@ import re
 import shutil
 import sys
 import uuid
+import os
+import tempfile
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -30,6 +36,77 @@ class WorkflowReadinessError(RuntimeError):
     def __init__(self, issues: Iterable[str]) -> None:
         self.issues = tuple(str(issue) for issue in issues if str(issue).strip())
         super().__init__("Workflow preflight failed: " + "; ".join(self.issues))
+
+
+_held_projects: ContextVar[frozenset[Path]] = ContextVar("held_projects", default=frozenset())
+
+
+@contextmanager
+def project_write_lock(project_dir: Path):
+    """Reject concurrent writers across threads/processes; allow nested workflows."""
+    root = project_dir.resolve()
+    if get_paths().is_inside_system_root(root):
+        raise WorkflowReadinessError(["execution folder cannot be inside SYSTEM_ROOT"])
+    held = _held_projects.get()
+    if root in held:
+        yield
+        return
+    lock = root / ".aai-active.lock"
+    # ponytail: exclusive file, no automatic stale-lock deletion; inspect interrupted runs before recovery.
+    try:
+        with lock.open("x", encoding="utf-8") as stream:
+            stream.write(str(os.getpid()))
+    except FileExistsError as exc:
+        raise WorkflowReadinessError([f"project already has an active writer: {root}"]) from exc
+    token = _held_projects.set(held | {root})
+    try:
+        yield
+    finally:
+        _held_projects.reset(token)
+        lock.unlink(missing_ok=True)
+
+
+_slot_held: ContextVar[bool] = ContextVar("workflow_slot_held", default=False)
+_deadline: ContextVar[float | None] = ContextVar("workflow_deadline", default=None)
+
+
+def check_workflow_deadline():
+    deadline = _deadline.get()
+    if deadline is not None and time.monotonic() >= deadline:
+        raise WorkflowReadinessError(["workflow exceeded its 900-second cooperative deadline; inspect partial run before retry"])
+
+
+
+@contextmanager
+def workflow_slot():
+    """At most two root workflows per installation, including CLI and HTTP jobs."""
+    if _slot_held.get():
+        check_workflow_deadline()
+        yield
+        return
+    directory = get_paths().state_dir / "job_slots"
+    directory.mkdir(parents=True, exist_ok=True)
+    slot = None
+    # ponytail: two local slots; interrupted processes require inspection before removing stale locks.
+    for index in range(2):
+        candidate = directory / f"{index}.lock"
+        try:
+            with candidate.open("x", encoding="utf-8") as stream:
+                stream.write(str(os.getpid()))
+            slot = candidate
+            break
+        except FileExistsError:
+            continue
+    if slot is None:
+        raise WorkflowReadinessError(["global workflow capacity reached (2); retry after an active job completes"])
+    token = _slot_held.set(True)
+    deadline_token = _deadline.set(time.monotonic() + 900)
+    try:
+        yield
+    finally:
+        _slot_held.reset(token)
+        _deadline.reset(deadline_token)
+        slot.unlink(missing_ok=True)
 
 
 def _slug(value: str) -> str:
@@ -125,13 +202,13 @@ def ensure_workflow_ready(
             issues.append("system health check failed")
     if resolved_paths.is_inside_system_root(project.directory):
         issues.append("execution folder cannot be inside SYSTEM_ROOT")
+        raise WorkflowReadinessError(issues)
     if not project.directory.is_dir():
         issues.append(f"execution folder does not exist: {project.directory}")
     else:
         try:
-            probe = project.directory / ".aai_write_probe"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink()
+            with tempfile.TemporaryFile(dir=project.directory) as probe:
+                probe.write(b"ok")
         except OSError as exc:
             issues.append(f"execution folder is not writable: {exc}")
 
@@ -149,6 +226,9 @@ def ensure_workflow_ready(
 
     return {
         "ready": True,
+        "system_root": str(resolved_paths.system_root),
+        "module_root": str(Path(__file__).resolve().parents[2]),
+        "workspace_root": str(resolved_paths.workspace_root),
         "python": sys.executable,
         "project_path": str(project.directory),
         "tools": tool_report,

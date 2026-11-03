@@ -115,22 +115,17 @@ def _has_spec_markers(candidate: Path) -> bool:
 
 
 def _discover_system_root(start: Path) -> Path:
-    """Walk upwards from ``start`` looking for the system root.
-    Two passes keep both layouts working (audit A07): first the classic
-    ``DATA BASE`` folder name, then — for fresh clones in an arbitrarily named
-    folder — the canonical spec files as the root marker. The folder-name pass
-    runs first so a workspace containing a nested ``DATA BASE`` keeps resolving
-    to that nested root.
-    """
-    # Pass 1: legacy folder-name marker (nested DATA BASE wins immediately).
+    """Prefer the nearest checkout markers; folder names are a legacy fallback."""
+    for candidate in (start, *start.parents):
+        if _has_spec_markers(candidate):
+            return candidate
+        nested = candidate / SYSTEM_ROOT_DIRNAME
+        if _has_spec_markers(nested):
+            return nested
     for candidate in (start, *start.parents):
         nested = candidate / SYSTEM_ROOT_DIRNAME
         if _looks_like_system_root(nested):
             return nested
-    # Pass 2: any checkout holding the canonical spec files.
-    for candidate in (start, *start.parents):
-        if _has_spec_markers(candidate):
-            return candidate
     raise PathResolutionError(
         f"Could not locate the {SYSTEM_ROOT_DIRNAME!r} system root starting from {start}. "
         f"Set {ENV_SYSTEM_ROOT} to the absolute path of the system root."

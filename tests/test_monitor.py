@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from http.server import ThreadingHTTPServer
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from src.core.paths import ENV_SYSTEM_ROOT, reset_paths_cache
 from src.runtime.monitor import create_handler
@@ -18,6 +18,7 @@ def _get_json(url: str) -> dict[str, object]:
 
 def test_monitor_serves_page_and_progress_api(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv(ENV_SYSTEM_ROOT, str(tmp_path))
+    monkeypatch.setenv("AUTONOMI_API_TOKEN", "dummy-test-token")
     reset_paths_cache()
     server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler())
     thread = threading.Thread(target=server.serve_forever)
@@ -27,7 +28,10 @@ def test_monitor_serves_page_and_progress_api(tmp_path, monkeypatch) -> None:
         with urlopen(base_url, timeout=5) as response:  # noqa: S310 - local test server only
             assert "AUTONOMI AGENTIC ILMIAH" in response.read().decode("utf-8")
 
-        plan = _get_json(f"{base_url}/api/plan?topic=hak%20anak")
+        request = Request(f"{base_url}/api/plan", data=b'{"topic":"hak anak"}',
+            headers={"Content-Type": "application/json", "X-Autonomi-Token": "dummy-test-token"})
+        with urlopen(request, timeout=5) as response:
+            plan = json.loads(response.read())
         assert plan["success"] is True
         assert plan["plan"]["citation_style"] == "APA7"
 

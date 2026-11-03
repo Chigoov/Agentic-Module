@@ -50,6 +50,7 @@ class AcademicWritingRequest(AgentRequest):
     quantitative_review_exact_count: int | None = None
     quantitative_review_best_count: int | None = None
     require_free_full_text: bool = False
+    findings_sources: list[Source] | None = None
 
 
 class AcademicWritingResponse(AgentResponse):
@@ -80,35 +81,42 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
         )
 
     def _execute(self, request: AcademicWritingRequest) -> AcademicWritingResponse:
+        from src.runtime.execution import project_write_lock, workflow_slot
+        # Preflight precedes even the lockfile or any project output.
+        ensure_workflow_ready(project=request.project)
+        with workflow_slot(), project_write_lock(request.project.directory):
+            return self._run(request)
+
+    def _run(self, request: AcademicWritingRequest) -> AcademicWritingResponse:
+        sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
+        persisted_reviews = SemanticReview.load_history(sem_path)
         resolve_source_paths(request.sources, request.project)
         options = review_options(request.model_dump(exclude_unset=True), request.project)
         for name, value in options.items():
             setattr(request, name, value)
+        required_tools = [DocxGenerationTool()] if request.generate_docx else []
+        required_tools.extend(p for p in getattr(request.verification_engine, "_providers", ())
+                              if getattr(p, "is_available", lambda: True)())
+        standard_template = resolve_standard_workbook_template(request.quantitative_review_template)
+        review_template = standard_template if request.quantitative_review or request.quantitative_review_records else None
+        readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
         write_json(request.project.directory / "workflow_options.json", options, root=request.project.directory, overwrite=True)
         request.project.research_options.update(options)
         write_json(request.project.directory / "project.json", request.project.model_dump(mode="json"), root=request.project.directory, overwrite=True)
-        required_tools = [DocxGenerationTool()] if request.generate_docx else []
-        required_tools.extend(getattr(request.verification_engine, "_providers", ()))
-        review_template = resolve_standard_workbook_template(request.quantitative_review_template) if request.quantitative_review or request.quantitative_review_records else None
-        readiness = ensure_workflow_ready(project=request.project, tools=required_tools)
         audit = AcademicRunAudit.start(project=request.project, claims=request.claims, evidence=request.evidence,
             sources=request.sources, outline=request.outline, command=request.command or "run-academic", input_path=request.input_path)
-        write_json(audit.run_dir / "workflow_options.json", options, root=request.project.directory, overwrite=True)
-        search_summary = audit.snapshot_search_summary(request.quantitative_review_summary)
-        semantic_reviews = list(request.semantic_reviews)
-        sem_path = request.project.artifact_path(ProjectArtifact.SEMANTIC_REVIEWS)
-        if sem_path.is_file():
-            import json
-            for raw in json.loads(sem_path.read_text(encoding="utf-8")):
-                item = SemanticReview.model_validate(raw)
-                if not any(r.claim_id == item.claim_id for r in semantic_reviews):
-                    semantic_reviews.append(item)
-        write_json(sem_path, [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
-        write_json(audit.run_dir / "semantic_reviews.json", [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
         quantitative = None
         orchestrated = None
         stages = []
         try:
+            write_json(audit.run_dir / "workflow_options.json", options, root=request.project.directory, overwrite=True)
+            search_summary = audit.snapshot_search_summary(request.quantitative_review_summary)
+            semantic_reviews = list(request.semantic_reviews)
+            for item in persisted_reviews:
+                if not any(r.claim_id == item.claim_id for r in semantic_reviews):
+                    semantic_reviews.append(item)
+            write_json(sem_path, [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
+            write_json(audit.run_dir / "semantic_reviews.json", [r.model_dump(mode="json") for r in semantic_reviews], root=request.project.directory, overwrite=True)
             original_integrity = check_input_references(claims=request.claims, evidence=request.evidence, sources=request.sources, outline=request.outline)
             withdrawn_ids = {c.id for c in request.claims if c.status == ClaimStatus.WITHDRAWN
                 and any(h.to_state == "WITHDRAWN" and h.reason.strip() and h.actor for h in c.history)
@@ -229,7 +237,8 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 quantitative_workbook_path=quantitative["workbook_path"] if quantitative else None,
                 quantitative_report_path=quantitative["report_path"] if quantitative else None,
                 checksum_manifest_path=quantitative["manifest_path"] if quantitative else None,
-                error_message=error, result_metadata=metadata)
+                error_message=error, result_metadata=metadata, findings_sources=request.findings_sources, workbook_template=str(standard_template))
+            metadata.update({key: summary[key] for key in ("findings_workbook_path", "work_report_path")})
             if quantitative:
                 from src.tools.quantitative_review_workbook import update_workflow_report
                 update_workflow_report(quantitative, summary)
@@ -245,7 +254,8 @@ class AcademicWritingWorkflow(BaseAgent[AcademicWritingRequest, AcademicWritingR
                 quantitative_report_path=quantitative["report_path"] if quantitative else None,
                 checksum_manifest_path=quantitative["manifest_path"] if quantitative else None)
             summary = audit.finish(success=False, stages=stages, draft_path=orchestrated.draft_path if orchestrated else None,
-                error_message=str(exc), result_metadata=metadata, **paths)
+                error_message=str(exc), result_metadata=metadata, findings_sources=request.findings_sources, workbook_template=str(standard_template), **paths)
+            metadata.update({key: summary[key] for key in ("findings_workbook_path", "work_report_path")})
             error = str(exc)
             if quantitative:
                 from src.tools.quantitative_review_workbook import update_workflow_report

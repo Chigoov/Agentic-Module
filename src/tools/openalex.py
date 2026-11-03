@@ -46,13 +46,13 @@ class OpenAlexTool(ResearchTool):
 
     _BASE_URL: ClassVar[str] = "https://api.openalex.org/works"
 
-    def _client(self) -> HttpClient:
+    def _client(self, *, verification: bool = False) -> HttpClient:
         cfg = get_config().tool("openalex")
         return HttpClient(
             tool_name=self.name,
             contact_email=cfg.contact_email,
             timeout_seconds=cfg.timeout_seconds,
-            max_retries=get_config().research.max_discovery_retries,
+            max_retries=get_config().research.max_verification_retries if verification else get_config().research.max_discovery_retries,
         )
 
     def _build_params(self, request: ResearchRequest) -> dict[str, Any]:
@@ -109,7 +109,7 @@ class OpenAlexTool(ResearchTool):
     ) -> tuple[list[Source], int, str, str]:
         client = self._client()
         params = self._build_params(request)
-        result = client.get_json(self._BASE_URL, params=params)
+        result = client.get_json(self._endpoint(self._BASE_URL, "/works"), params=params)
         payload = result.json()
 
         items = payload.get("results") or []
@@ -125,11 +125,13 @@ class OpenAlexTool(ResearchTool):
         Returns ``None`` for a missing/malformed DOI or an empty/unusable record
         (never fabricates a source).
         """
+        if not self.is_available():
+            return None
         normalized = normalize_doi(doi)
         if not normalized:
             return None
-        client = self._client()
-        url = f"{self._BASE_URL}/doi:{urllib.parse.quote(normalized, safe='')}"
+        client = self._client(verification=True)
+        url = f"{self._endpoint(self._BASE_URL, '/works')}/doi:{urllib.parse.quote(normalized, safe='')}"
         result = client.get_json(url)
         item = result.json()
         if not isinstance(item, dict):

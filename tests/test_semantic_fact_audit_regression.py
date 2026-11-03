@@ -329,6 +329,7 @@ def test_fully_supported_claim_with_valid_source_evidence_location_and_review_pa
         sections=[OutlineSection(title="Findings", claim_ids=[claim.id])],
     )
 
+    review.input_fingerprint = SemanticReview.fingerprint(claim, [evidence], [source])
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
             project=project,
@@ -1101,6 +1102,7 @@ def test_regression_positive_verified_source_verbatim_evidence_full_review_produ
         sections=[OutlineSection(title="Results", claim_ids=[claim.id])],
     )
 
+    review.input_fingerprint = SemanticReview.fingerprint(claim, [evidence], [source])
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
             project=project,

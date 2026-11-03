@@ -22,7 +22,7 @@ from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
-from src.core.errors import HumanReviewRequired
+from src.core.errors import HumanReviewRequired, ProjectError
 from src.core.logging import get_logger
 from src.runtime.progress import progress_context, progress_scope, record_progress
 
@@ -97,7 +97,8 @@ class BaseAgent(ABC, Generic[TRequest, TResponse]):
         fields = {"agent_id": self.name}
         if project is not None:
             fields.update(project_path=str(project.directory), project_name=project.title or project.name)
-        with progress_scope(**fields):
+        from src.tools.source_content import source_run_cache
+        with source_run_cache(), progress_scope(**fields):
             kind = "job" if root_job else "agent"
             self._progress("running", kind)
             response = self._execute_logged(request)
@@ -127,6 +128,8 @@ class BaseAgent(ABC, Generic[TRequest, TResponse]):
         """
         self._logger.info("Agent invoked", extra={"agent": self.name})
         try:
+            from src.runtime.execution import check_workflow_deadline
+            check_workflow_deadline()
             response = self._execute(request)
         except HumanReviewRequired as exc:
             self._logger.warning(
@@ -141,6 +144,10 @@ class BaseAgent(ABC, Generic[TRequest, TResponse]):
             response.needs_human_review = True
             response.review_prompt = exc.render()
             response.error_message = str(exc)
+        except ProjectError as exc:
+            response = self._make_error_response(error_message=str(exc), needs_human_review=True,
+                **{key: exc.context[key] for key in ("run_id", "run_dir") if key in exc.context})
+            response.metadata.update(execution_success=False, result_status="FAILED", finalization_allowed=False)
         except Exception as exc:
             self._logger.error(
                 "Agent raised an unhandled exception",

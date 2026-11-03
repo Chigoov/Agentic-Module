@@ -11,6 +11,8 @@ from src.tools.research_tool import ResearchRequest, ResearchResponse
 from src.tools.semantic_scholar import SemanticScholarTool
 
 
+pytestmark = pytest.mark.usefixtures("enabled_research_tools")
+
 class TestResearchRequest:
     def test_defaults(self) -> None:
         req = ResearchRequest(query="deep learning")

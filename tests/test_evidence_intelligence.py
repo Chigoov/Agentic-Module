@@ -332,11 +332,11 @@ def test_review_queue_load_missing_file(tmp_path: Path) -> None:
 
 
 def test_review_queue_load_invalid_content(tmp_path: Path) -> None:
-    """Loading from a non-list JSON payload returns an empty ReviewQueue."""
+    """An existing malformed queue must never erase blocking review state."""
     bad_path = tmp_path / "bad.json"
     bad_path.write_text('{"error": "not a list"}', encoding="utf-8")
-    loaded = ReviewQueue.load(bad_path)
-    assert len(loaded) == 0
+    with pytest.raises(ValueError, match="JSON list"):
+        ReviewQueue.load(bad_path)
 
 
 def test_review_queue_summary() -> None:

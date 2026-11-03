@@ -9,16 +9,21 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from functools import lru_cache
+from threading import RLock, BoundedSemaphore
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, TaskAnalyzerAgent, TaskAnalyzerRequest
 from src.core.paths import get_paths
+from src.core.project_manager import ProjectManager
 from src.runtime.bootstrap import health_check
 from src.runtime.execution import create_execution_project, ensure_workflow_ready
-from src.runtime.progress import read_progress, record_progress
+from src.runtime.progress import read_progress, record_progress, progress_file, progress_since
+from src.runtime.hermes_monitor import HermesMonitor
 from src.schemas.claim import Claim, SemanticReview
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
@@ -30,11 +35,28 @@ from src.workflows.gates import AcademicGateError
 
 __all__ = ["create_handler", "serve", "get_api_token"]
 
+_hermes: HermesMonitor | None = None
+
+
+def _hermes_snapshot() -> dict:
+    return _hermes.snapshot() if _hermes else {"connected": False, "status": "Hermes belum tersambung", "revision": 0, "jobs": [], "events": []}
+
+
+def _monitor_events(job_id: str | None = None, profile: str | None = None) -> list[dict]:
+    snapshot = _hermes_snapshot()
+    events = (read_progress(limit=None if job_id else 1000, job_id=job_id) if profile in {None, 'asistenriset'} else []) + (_hermes.events_for(job_id, profile) if _hermes else [])
+    events.sort(key=lambda e:e.get('time', ''))
+    # Loss of transport is an observed unknown state, never a fabricated completion.
+    if not snapshot['connected']:
+        for job in snapshot['jobs']:
+            if job['status'] == 'unknown' and (job_id is None or job['job_id'] == job_id) and (profile is None or job['profile'] == profile):
+                events.append({**job['latest'], 'stage': 'hermes_connection', 'status': 'unknown', 'event_kind': 'job', 'message': 'Sambungan Hermes terputus'})
+    # ponytail: keep a selected task complete; bound the all-task overview only.
+    return events if job_id else events[-1000:]
+
 #: Maximum accepted request body (audit A15): oversized payloads are rejected
 #: with 413 instead of being read without bound.
 _MAX_BODY_BYTES = 10 * 1024 * 1024
-#: Environments where Origin may legitimately be absent (curl, CLI tools).
-_TRUSTED_ORIGIN_SUFFIXES: tuple[str, ...] = ("127.0.0.1", "localhost", "[::1]")
 
 
 def get_api_token() -> str:
@@ -158,14 +180,30 @@ load();setInterval(load,2000);
 
 INDEX = Path(__file__).with_name("static").joinpath("office.html").read_text(encoding="utf-8")
 HOME_INDEX = INDEX.replace('data-view="research"', 'data-view="home"')
+BENGKEL_INDEX = INDEX.replace('data-view="research"', 'data-view="bengkel"')
 
 
-def _jobs() -> dict[str, Any]:
-    """Home overview of workspace jobs, preserving terminal outcomes."""
-    jobs: dict[str, dict[str, Any]] = {}
-    ignored = set()
-    paths = get_paths()
-    for event in read_progress(limit=None):
+_job_projection = {}
+_job_projection_lock = RLock()
+
+
+def _aai_jobs(paths, stamp) -> list[dict]:
+    with _job_projection_lock:
+        return _update_aai_jobs(paths, stamp)
+
+
+def _update_aai_jobs(paths, stamp) -> list[dict]:
+    path = progress_file()
+    identity = (str(path), path.stat().st_ino if path.exists() else 0)
+    state = _job_projection.get("state")
+    if state is None or state["identity"] != identity or stamp[1] < state["offset"] or (stamp[1] == state["offset"] and stamp != state["stamp"]):
+        state = {"identity": identity, "offset": 0, "stamp": None, "jobs": {}, "ignored": set()}
+        _job_projection["state"] = state
+    jobs, ignored = state["jobs"], state["ignored"]
+    if state["stamp"] == stamp:
+        return [{**job, "agents": list(job["agents"].values())} for job in jobs.values()]
+    events, offset = progress_since(offset=state["offset"])
+    for event in events:
         job_id = event.get("job_id")
         if not isinstance(job_id, str) or not job_id or job_id in ignored:
             continue
@@ -174,6 +212,12 @@ def _jobs() -> dict[str, Any]:
             if not path:
                 continue
             project_path = Path(path)
+            # Reject known test paths before expensive Windows filesystem resolution.
+            try: candidate_parts = project_path.relative_to(paths.workspace_root).parts
+            except ValueError: candidate_parts = project_path.parts
+            if any(part.startswith('pytest-') or part == 'pytest-temp' for part in candidate_parts):
+                ignored.add(job_id)
+                continue
             if not paths.is_inside_workspace(project_path) or paths.is_inside_system_root(project_path):
                 ignored.add(job_id)
                 continue
@@ -201,16 +245,32 @@ def _jobs() -> dict[str, Any]:
             job["status"] = event.get("status", "idle")
         if event.get("event_kind") in {"job", "agent"} and event.get("agent_id"):
             job["agents"][event["agent_id"]] = event
-    recent = sorted(jobs.values(), key=lambda job: job["time"] or "", reverse=True)
+    state.update(offset=offset, stamp=stamp)
+    return [{**job, "agents": list(job["agents"].values())} for job in jobs.values()]
+
+
+def _jobs(profile: str | None = None) -> dict[str, Any]:
+    """Home overview of workspace jobs, preserving terminal outcomes."""
+    path = progress_file()
+    try:
+        stat = path.stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
+    except FileNotFoundError:
+        stamp = (0, 0)
+    jobs = _aai_jobs(get_paths(), stamp)
+    hermes = _hermes_snapshot()
+    linked = {identifier for job in hermes['jobs'] for identifier in job.get('linked_job_ids', [])}
+    recent = sorted([*(job for job in jobs if job['job_id'] not in linked), *hermes['jobs']], key=lambda job: job["time"] or "", reverse=True)
+    if profile:
+        recent = [j for j in recent if j.get('profile') == profile or profile == 'asistenriset' and j.get('source') != 'hermes']
     counts = {"running": 0, "review": 0, "agents": 0}
     for job in recent:
-        job["agents"] = list(job["agents"].values())
         if job["status"] in {"running", "started"}:
             counts["running"] += 1
             counts["agents"] += sum(agent.get("status") in {"running", "started"} for agent in job["agents"])
         elif job["status"] in {"partial", "pending", "blocked"}:
             counts["review"] += 1
-    return {"success": True, "counts": counts, "jobs": recent[:20]}
+    return {"success": True, "counts": counts, "jobs": recent[:20], "hermes": {k:hermes[k] for k in ('connected', 'status', 'revision')}}
 
 
 def _json(payload: Any) -> str:
@@ -238,7 +298,7 @@ def _project_from_payload(payload: dict[str, Any]) -> Project:
     if payload.get("resume"):
         if template is None or not (template.directory / "project.json").is_file():
             raise ValueError("Resume requires an existing server-owned project")
-        return Project.model_validate(json.loads((template.directory / "project.json").read_text(encoding="utf-8")))
+        return ProjectManager(paths=paths).load_manifest(template.directory / "project.json")
     project_name = payload.get("project_name") or payload.get("topic") or "research"
     workspace_name = str(payload.get("workspace") or (template.workspace if template else "TUGAS 1"))
     # The monitor may run against a fresh portable root; create only the
@@ -265,6 +325,8 @@ def _plan(topic: str, workspace: str = "TUGAS 1") -> dict[str, Any]:
         paths = get_paths()
         paths.workspace_path(workspace).mkdir(parents=True, exist_ok=True)
         project = create_execution_project(user_request=topic, command="plan", workspace=workspace)
+        from src.tools.quantitative_review_workbook import resolve_standard_workbook_template
+        resolve_standard_workbook_template()
         readiness = ensure_workflow_ready(project=project)
     except Exception as exc:
         return {"success": False, "error": str(exc)}
@@ -274,7 +336,12 @@ def _plan(topic: str, workspace: str = "TUGAS 1") -> dict[str, Any]:
     plan = ResearchPlannerAgent().execute(
         ResearchPlannerRequest(task=task_response.task, keywords=task_response.keywords)
     ).plan
-    return {"success": True, "project_path": str(project.directory), "readiness": readiness, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan}
+    from src.workflows.user_outputs import plan_outputs
+    try:
+        outputs = plan_outputs(project, plan)
+    except Exception as exc:
+        return {"success": False, "project_path": str(project.directory), "error": f"Gagal membuat Excel: {exc}"}
+    return {"success": True, "project_path": str(project.directory), "readiness": readiness, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan, **outputs}
 
 
 class MonitorHandler(BaseHTTPRequestHandler):
@@ -285,7 +352,7 @@ class MonitorHandler(BaseHTTPRequestHandler):
         # CORS narrowed to loopback origins only (audit A06): same-origin
         # pages need no CORS header, foreign pages get none.
         origin = self.headers.get("Origin", "")
-        if any(origin.rstrip("/").endswith(suffix) for suffix in _TRUSTED_ORIGIN_SUFFIXES):
+        if origin and self._origin_allowed():
             self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Autonomi-Token")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -301,55 +368,96 @@ class MonitorHandler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin", "")
         if not origin:
             return True
-        return any(origin.rstrip("/").endswith(suffix) for suffix in _TRUSTED_ORIGIN_SUFFIXES)
+        try:
+            parsed = urlparse(origin)
+            return (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+                    and (parsed.port or 80) == self.server.server_port
+                    and not parsed.username and not parsed.password and not parsed.path
+                    and not parsed.query and not parsed.fragment)
+        except ValueError:
+            return False
+
+    def _host_allowed(self) -> bool:
+        try:
+            parsed = urlparse("//" + self.headers.get("Host", ""))
+            return (parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+                    and (parsed.port or 80) == self.server.server_port
+                    and not parsed.username and not parsed.password and not parsed.path
+                    and not parsed.query and not parsed.fragment)
+        except ValueError:
+            return False
     def _token_ok(self) -> bool:
         """Write endpoints require the local API token (audit A06)."""
         provided = self.headers.get("X-Autonomi-Token", "")
         return bool(provided) and secrets.compare_digest(provided, get_api_token())
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not self._host_allowed() or not self._origin_allowed():
+            self._json(403, {"success": False, "error": "untrusted host or origin"})
+            return
         self._send(204, b"", "text/plain; charset=utf-8")
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._host_allowed():
+            self._json(403, {"success": False, "error": "untrusted host"})
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/":
-            self._send(200, INDEX if "job_id" in parse_qs(parsed.query) else HOME_INDEX, "text/html; charset=utf-8")
+            job = parse_qs(parsed.query).get('job_id', [''])[0]
+            self._send(200, (BENGKEL_INDEX if job.startswith('hermes:bengkel:') else INDEX) if job else HOME_INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/beranda":
             self._send(200, HOME_INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/riset":
             self._send(200, INDEX, "text/html; charset=utf-8")
+        elif parsed.path == "/bengkel":
+            self._send(200, BENGKEL_INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/workflow":
             self._send(200, LEGACY_INDEX, "text/html; charset=utf-8")
         elif parsed.path == "/api/progress":
             query = parse_qs(parsed.query)
-            self._json(200, {"success": True, "events": read_progress(limit=1000, job_id=query.get("job_id", [None])[0])})
+            snapshot = _hermes_snapshot()
+            self._json(200, {"success": True, "events": _monitor_events(query.get("job_id", [None])[0], query.get('profile', [None])[0]), "hermes": {k:snapshot[k] for k in ('connected', 'status', 'revision')}})
         elif parsed.path == "/api/jobs":
-            self._json(200, _jobs())
-        elif parsed.path in {"/assets/research-office.jpg", "/assets/research-team.webp", "/assets/research-team-v3.png", "/assets/research-team-chibi-v4.png", "/assets/office.js"}:
+            self._json(200, _jobs(parse_qs(parsed.query).get('profile', [None])[0]))
+        elif parsed.path == "/api/hermes":
+            self._json(200, _hermes_snapshot())
+        elif parsed.path == "/api/events":
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            previous, last_ping = None, 0.0
+            try:
+                while True:
+                    path = progress_file()
+                    stamp = path.stat().st_mtime_ns if path.exists() else 0
+                    revision = f'{stamp}:{_hermes.revision if _hermes else 0}'
+                    if revision != previous:
+                        self.wfile.write(f'id: {revision}\ndata: {json.dumps({"revision": revision})}\n\n'.encode())
+                        self.wfile.flush()
+                        previous = revision
+                    elif time.monotonic() - last_ping >= 10:
+                        self.wfile.write(b': heartbeat\n\n')
+                        self.wfile.flush()
+                        last_ping = time.monotonic()
+                    time.sleep(0.1)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+        elif parsed.path in {"/assets/research-office.jpg", "/assets/research-team.webp", "/assets/research-team-v3.png", "/assets/research-team-chibi-v4.png", "/assets/research-team-seated-v5.png", "/assets/office.js"}:
             asset = Path(__file__).with_name("static") / Path(parsed.path).name
             content_type = {".jpg": "image/jpeg", ".webp": "image/webp", ".png": "image/png", ".js": "text/javascript; charset=utf-8"}[asset.suffix]
             self._send(200, asset.read_bytes(), content_type)
-        elif parsed.path == "/api/check":
-            record_progress("check", "running", message="Health check started")
-            ok = health_check(verbose=False)
-            record_progress("check", "success" if ok else "failed", message="Health check completed")
-            self._json(200 if ok else 500, {"success": ok})
-        elif parsed.path == "/api/plan":
-            query = parse_qs(parsed.query)
-            topic = query.get("topic", [""])[0]
-            workspace = query.get("workspace", ["TUGAS 1"])[0]
-            record_progress("plan", "running", message=topic)
-            payload = _plan(topic, workspace)
-            record_progress("plan", "success" if payload["success"] else "failed", message="Plan completed")
-            self._json(200 if payload["success"] else 500, payload)
+        elif parsed.path in {"/api/check", "/api/plan"}:
+            self._json(405, {"success": False, "error": "Use authenticated POST for this operation"})
         else:
             self._json(404, {"success": False, "error": "not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if urlparse(self.path).path != "/api/run-academic":
+        route = urlparse(self.path).path
+        if route not in {"/api/run-academic", "/api/plan", "/api/check"}:
             self._json(404, {"success": False, "error": "not found"})
             return
         # Guards first (audit A06): Origin allowlist, then the local token.
-        if not self._origin_allowed():
+        if not self._host_allowed() or not self._origin_allowed():
             self._json(403, {"success": False, "error": "cross-origin requests are not allowed"})
             return
         if not self._token_ok():
@@ -374,6 +482,20 @@ class MonitorHandler(BaseHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8") or "{}")
             if not isinstance(payload, dict):
                 raise ValueError("request body must be a JSON object")
+            if route == "/api/check":
+                ok = health_check(verbose=False)
+                from src.runtime.bootstrap import capability_readiness
+                command = payload.get("command", "research")
+                if command not in {"plan", "research", "run-academic", "finalize"}:
+                    raise ValueError("Unknown readiness command")
+                readiness = capability_readiness(command)
+                ready = ok and readiness["configuration_ready"]
+                self._json(200 if ready else 400, {"success": ready, "structural_health": ok, "readiness": readiness})
+                return
+            if route == "/api/plan":
+                result = _plan(str(payload.get("topic", "")), str(payload.get("workspace", "TUGAS 1")))
+                self._json(200 if result["success"] else 400, result)
+                return
             project = _project_from_payload(payload)
             claims = [Claim.model_validate(x) for x in payload.get("claims", [])]
             evidence = [Evidence.model_validate(x) for x in payload.get("evidence", [])]
@@ -400,7 +522,9 @@ class MonitorHandler(BaseHTTPRequestHandler):
                 **review_options(payload, project),
             )
         )
-        record_progress("academic", "success" if response.success else "failed", message=response.error_message or "Academic workflow completed")
+        status = str(response.metadata.get("result_status") or ("PARTIAL" if response.needs_human_review else "PASS" if response.success else "FAILED")).lower()
+        record_progress("academic", "success" if status == "pass" else status, message=response.error_message or "Academic workflow completed",
+                        result_status=status.upper(), finalization_allowed=response.metadata.get("finalization_allowed", False))
         self._json(200 if response.success else 400, response.model_dump(mode="json"))
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -411,12 +535,46 @@ def create_handler() -> type[MonitorHandler]:
     return MonitorHandler
 
 
+class BoundedMonitorServer(ThreadingHTTPServer):
+    """Bound request threads, including idle clients."""
+    def __init__(self, *args, **kwargs):
+        self._requests = BoundedSemaphore(16)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self._requests.acquire(blocking=False):
+            try:
+                request.settimeout(1)
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            finally:
+                self.shutdown_request(request)
+            return
+        request.settimeout(30)
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._requests.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._requests.release()
+
+
 def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
-    server = ThreadingHTTPServer((host, port), create_handler())
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("Monitor only supports loopback binding")
+    global _hermes
+    _hermes = HermesMonitor(get_paths().state_dir)
+    _hermes.start()
+    server = BoundedMonitorServer((host, port), create_handler())
     print(_json({"success": True, "url": f"http://{host}:{port}"}))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print(_json({"success": True, "stopped": True}))
     finally:
+        _hermes.stop.set()
         server.server_close()

@@ -14,11 +14,12 @@ from src.agents.research import ResearchPlannerAgent, ResearchPlannerRequest, Ta
 from src.core.config import get_config
 from src.core.errors import PathSafetyError
 from src.core.paths import PathResolutionError, get_paths
+from src.core.project_manager import ProjectManager
 from src.core.storage import ensure_within, write_json
 from src.runtime.bootstrap import bootstrap, health_check
 from src.runtime.execution import create_execution_project, ensure_workflow_ready
 from src.runtime.monitor import serve
-from src.schemas.claim import Claim, SemanticReview
+from src.schemas.claim import Claim, SemanticReview, SemanticDecision
 from src.schemas.evidence import Evidence
 from src.schemas.outline import Outline
 from src.schemas.project import Project
@@ -89,7 +90,7 @@ def _project_from_payload(payload: dict[str, Any], *, command: str) -> Project:
         manifest = project.directory / "project.json"
         if not manifest.is_file():
             raise ValueError("Resume requires the actual existing project manifest")
-        return Project.model_validate(_read_json(str(manifest)))
+        return ProjectManager().load_manifest(manifest, allow_external=True)
     return create_execution_project(
         user_request=project.user_request or project.title or project.name,
         command=command,
@@ -104,11 +105,19 @@ def _cmd_check(_args: argparse.Namespace) -> int:
     except PathResolutionError as exc:
         print(_json({"success": False, "error": str(exc)}), file=sys.stderr)
         return 1
-    return 0 if health_check(paths=paths, verbose=True) else 1
+    from src.runtime.bootstrap import capability_readiness
+    structural = health_check(paths=paths, verbose=True)
+    command = getattr(_args, "for_command", None)
+    readiness = capability_readiness(command or "research")
+    print(_json({"structural_health": structural, "module_root": str(Path(__file__).resolve().parents[2]),
+        "system_root": str(paths.system_root), "workspace_root": str(paths.workspace_root),
+        "readiness": readiness, "reasoning": "external_directing_agent", "external_agent_tokens": None}))
+    return 0 if structural and (not command or readiness["configuration_ready"]) else 1
 
 
 def _cmd_plan(args: argparse.Namespace) -> int:
     user_request = args.input
+    payload = {}
     if args.input_json:
         payload = _read_json(args.input_json)
         user_request = str(payload.get("topic") or payload.get("user_request") or "")
@@ -119,6 +128,8 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             command="plan",
             workspace=args.workspace,
         )
+        from src.tools.quantitative_review_workbook import resolve_standard_workbook_template
+        resolve_standard_workbook_template()
         readiness = ensure_workflow_ready(project=project)
     except Exception as exc:
         print(_json({"success": False, "error": str(exc), "project_path": str(project.directory) if project else None}), file=sys.stderr)
@@ -128,9 +139,15 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         print(_json({"success": False, "error": task_response.error_message}), file=sys.stderr)
         return 1
     plan = ResearchPlannerAgent().execute(
-        ResearchPlannerRequest(task=task_response.task, keywords=task_response.keywords)
+        ResearchPlannerRequest(task=task_response.task, keywords=task_response.keywords, queries=payload.get("search_options", {}).get("queries", []), concepts=payload.get("search_options", {}).get("concepts", []))
     ).plan
-    print(_json({"success": True, "project_path": str(project.directory), "readiness": readiness, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan}))
+    from src.workflows.user_outputs import plan_outputs
+    try:
+        outputs = plan_outputs(project, plan)
+    except Exception as exc:
+        print(_json({"success": False, "project_path": str(project.directory), "error": f"Gagal membuat Excel: {exc}"}), file=sys.stderr)
+        return 1
+    print(_json({"success": True, "project_path": str(project.directory), "readiness": readiness, "task": task_response.task.to_dict(), "keywords": task_response.keywords, "plan": plan, **outputs}))
     return 0
 
 
@@ -215,6 +232,7 @@ def _cmd_research(args: argparse.Namespace) -> int:
             max_sources=getattr(args, "max_sources", 10),
             command="research",
             input_path=getattr(args, "input_json", None),
+            search_options=payload.get("search_options", {}) if args.input_json else {},
             **review_config,
         )
     )
@@ -275,7 +293,16 @@ def _resolve_project_dir(args: argparse.Namespace) -> Path | None:
 
 
 def _cmd_runs(args: argparse.Namespace) -> int:
-    target_path = _resolve_project_dir(args)
+    target = _resolve_project_dir(args)
+    if getattr(args, "prune", False):
+        from src.runtime.execution import project_write_lock
+        if target and target.exists():
+            with project_write_lock(target.parent if target.name == "runs" else target):
+                return _runs_unlocked(args, target)
+    return _runs_unlocked(args, target)
+
+
+def _runs_unlocked(args: argparse.Namespace, target_path: Path | None) -> int:
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory with runs/ not found"}), file=sys.stderr)
         return 1
@@ -312,6 +339,9 @@ def _cmd_runs(args: argparse.Namespace) -> int:
         if summary_file.exists():
             try:
                 summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
+                if not isinstance(summary_data, dict):
+                    summary_data = None
+                    raise ValueError("Run summary must be an object")
                 started_at = str(summary_data.get("started_at") or d.name)
             except Exception:
                 pass
@@ -328,7 +358,13 @@ def _cmd_runs(args: argparse.Namespace) -> int:
             return 1
 
         total_before = len(runs_with_meta)
-        to_delete = runs_with_meta[args.keep:]
+        # ponytail: retain unknown/incomplete runs; only finished audit runs are eligible.
+        terminal = [item for item in runs_with_meta
+                    if item[2] and item[0].name.startswith("run_")
+                    and item[2].get("run_id") == item[0].name
+                    and item[2].get("finished_at") and isinstance(item[2].get("success"), bool)
+                    and not item[0].is_symlink() and not (item[0] / ".active").exists()]
+        to_delete = terminal[args.keep:]
         deleted_ids: list[str] = []
 
         for r_dir, _, _ in to_delete:
@@ -412,7 +448,16 @@ def _cmd_export_bundle(args: argparse.Namespace) -> int:
 
 
 def _cmd_review_queue(args: argparse.Namespace) -> int:
-    target_path = _resolve_project_dir(args)
+    target = _resolve_project_dir(args)
+    if getattr(args, "resolve", None):
+        from src.runtime.execution import project_write_lock
+        if target and target.exists():
+            with project_write_lock(target):
+                return _review_queue_unlocked(args, target)
+    return _review_queue_unlocked(args, target)
+
+
+def _review_queue_unlocked(args: argparse.Namespace, target_path: Path | None) -> int:
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
         return 1
@@ -425,15 +470,21 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
 
     # Resolution mode
     if getattr(args, "resolve", None):
+        existing_reviews = SemanticReview.load_history(target_path / ProjectArtifact.SEMANTIC_REVIEWS.value)
         target_id = args.resolve.strip()
-        matched = next((i for i in queue.items if i.id == target_id or i.id.endswith(target_id) or i.item_id == target_id or (target_id in i.reason)), None)
-        if not matched:
-            print(_json({"success": False, "error": f"Review item '{target_id}' not found in review queue"}), file=sys.stderr)
+        exact = [i for i in queue.items if i.id == target_id]
+        candidates = exact or [i for i in queue.items if i.item_id == target_id and i.status not in {"RESOLVED", "DISMISSED"}]
+        if len(candidates) != 1:
+            print(_json({"success": False, "error": "Review ID not found or ambiguous; provide exact unresolved review ID"}), file=sys.stderr)
             return 1
-
-        matched.status = "RESOLVED"
-        matched.resolution_notes = getattr(args, "notes", None) or getattr(args, "reason", None) or "Resolved by reviewer"
-        queue.save(queue_path, root=target_path)
+        matched = candidates[0]
+        notes = (getattr(args, "notes", None) or getattr(args, "reason", None) or "").strip()
+        reviewer = (getattr(args, "reviewer", None) or "").strip()
+        reviewer_type = getattr(args, "reviewer_type", None)
+        decision_str = getattr(args, "decision", None)
+        if matched.status in {"RESOLVED", "DISMISSED"} or not notes or not reviewer or reviewer_type not in {"ai", "human"} or not decision_str:
+            print(_json({"success": False, "error": "Resolution requires an unresolved item, explicit --decision, --notes, --reviewer and --reviewer-type ai|human"}), file=sys.stderr)
+            return 1
 
         # If this review is related to a claim, build/update a SemanticReview
         created_review = None
@@ -503,33 +554,48 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
                                 pass
 
             if claim_id and evd_id and src_id and excerpt:
-                from src.schemas.claim import SemanticDecision, SemanticReview
-                decision_str = getattr(args, "decision", "SUPPORTED") or "SUPPORTED"
-                decision = SemanticDecision.SUPPORTED if decision_str.upper() == "SUPPORTED" else SemanticDecision.PARTIALLY_SUPPORTED
+                from src.schemas.claim import SemanticDecision
+                decision_str = args.decision
+                decision = SemanticDecision(decision_str.upper())
                 sr = SemanticReview(
                     claim_id=claim_id,
                     decision=decision,
-                    reason=getattr(args, "notes", None) or getattr(args, "reason", None) or f"Verified against source {src_id}",
+                    reason=notes,
                     evidence_id=evd_id,
                     source_id=src_id,
                     evidence_excerpt=excerpt,
                     location=loc_str,
-                    reviewer=getattr(args, "reviewer", "human_expert") or "human_expert",
-                    method="expert_semantic_assessment",
+                    reviewer=reviewer,
+                    reviewer_type=reviewer_type,
+                    method=f"{reviewer_type}_semantic_assessment",
                 )
+                claims_file = target_path / ProjectArtifact.CLAIMS.value
+                evidence_file = target_path / "current_evidence.json"
+                sources_file = target_path / ProjectArtifact.VERIFIED_SOURCES.value
+                from src.core.storage import read_jsonl
+                current_claims = [Claim.model_validate(c) for c in _read_json(str(claims_file))] if claims_file.is_file() else []
+                current_evidence = [Evidence.model_validate(e) for e in (_read_json(str(evidence_file)) if evidence_file.is_file() else read_jsonl(target_path / ProjectArtifact.EVIDENCE.value))]
+                current_sources = [Source.model_validate(source) for source in _read_json(str(sources_file))] if sources_file.is_file() else []
+                current_claim = next((c for c in current_claims if c.id == claim_id), None)
+                current_item = next((e for e in current_evidence if e.id == evd_id and e.claim_id == claim_id and e.source_id == src_id), None)
+                if current_claim is None or current_item is None or not any(source.id == src_id for source in current_sources):
+                    print(_json({"success": False, "error": "Current claim/evidence/source snapshot required for review"}), file=sys.stderr)
+                    return 1
+                sr.input_fingerprint = SemanticReview.fingerprint(current_claim, current_evidence, current_sources)
                 created_review = sr.model_dump(mode="json")
                 sem_path = target_path / ProjectArtifact.SEMANTIC_REVIEWS.value
-                existing_sem = []
-                if sem_path.is_file():
-                    try:
-                        existing_sem = _read_json(str(sem_path))
-                        if not isinstance(existing_sem, list):
-                            existing_sem = []
-                    except Exception:
-                        existing_sem = []
-                existing_sem = [r for r in existing_sem if r.get("claim_id") != claim_id]
+                existing_sem = [r.model_dump(mode="json") for r in existing_reviews if r.claim_id != claim_id]
                 existing_sem.append(created_review)
                 write_json(sem_path, existing_sem, root=target_path, overwrite=True)
+
+            if created_review is None:
+                print(_json({"success": False, "error": "Cannot resolve claim review without located evidence"}), file=sys.stderr)
+                return 1
+
+        # Assessment is durable before the blocker is cleared; failure remains fail-closed.
+        matched.status = "RESOLVED"
+        matched.resolution_notes = getattr(args, "notes", None) or getattr(args, "reason", None) or "Resolved by reviewer"
+        queue.save(queue_path, root=target_path)
 
         print(_json({
             "success": True,
@@ -557,7 +623,16 @@ def _cmd_review_queue(args: argparse.Namespace) -> int:
 
 
 def _cmd_finalize(args: argparse.Namespace) -> int:
-    target_path = _resolve_project_dir(args)
+    from src.runtime.execution import project_write_lock
+    target = _resolve_project_dir(args)
+    if target and target.is_dir():
+        from src.runtime.execution import workflow_slot
+        with workflow_slot(), project_write_lock(target):
+            return _finalize_unlocked(args, target)
+    return _finalize_unlocked(args, target)
+
+
+def _finalize_unlocked(args: argparse.Namespace, target_path: Path | None) -> int:
     if target_path is None or not target_path.exists():
         print(_json({"success": False, "error": "Project directory not found"}), file=sys.stderr)
         return 1
@@ -578,7 +653,7 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
         return 1
 
     manifest = target_path / "project.json"
-    project = Project.model_validate(_read_json(str(manifest))) if manifest.is_file() else Project(
+    project = ProjectManager().load_manifest(manifest, allow_external=True) if manifest.is_file() else Project(
         name=target_path.name, workspace=target_path.parent.name, path=str(target_path), title=target_path.name)
     options_path = target_path / "workflow_options.json"
     options = _read_json(str(options_path)) if options_path.is_file() else project.research_options
@@ -607,7 +682,10 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
 
     evidence: list[Evidence] = []
     evd_path = target_path / ProjectArtifact.EVIDENCE.value
-    if evd_path.is_file():
+    current_evidence = target_path / "current_evidence.json"
+    if current_evidence.is_file():
+        evidence = [Evidence.model_validate(item) for item in _read_json(str(current_evidence))]
+    elif evd_path.is_file():
         from src.core.storage import read_jsonl
         evidence = [Evidence.model_validate(item) for item in read_jsonl(evd_path)]
     else:
@@ -637,15 +715,8 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
                         outline = Outline.model_validate(raw_snap)
 
     # Semantic reviews loaded from project semantic_reviews.json
-    semantic_reviews = []
     sem_path = target_path / ProjectArtifact.SEMANTIC_REVIEWS.value
-    if sem_path.is_file():
-        try:
-            raw_sem = _read_json(str(sem_path))
-            if isinstance(raw_sem, list):
-                semantic_reviews = [SemanticReview.model_validate(r) for r in raw_sem]
-        except Exception:
-            pass
+    semantic_reviews = SemanticReview.load_history(sem_path)
 
     response = AcademicWritingWorkflow().execute(
         AcademicWritingRequest(
@@ -671,6 +742,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     check = sub.add_parser("check", help="Run system health check")
+    check.add_argument("--for", dest="for_command", choices=["plan", "research", "run-academic", "finalize"])
     check.set_defaults(func=_cmd_check)
 
     plan = sub.add_parser("plan", help="Create a research plan from text or JSON")
@@ -724,9 +796,10 @@ def build_parser() -> argparse.ArgumentParser:
     rq.add_argument("--status", help="Filter by status (PENDING, RESOLVED, etc.)")
     rq.add_argument("--severity", help="Filter by severity (CRITICAL, HIGH, MEDIUM, LOW)")
     rq.add_argument("--resolve", help="Review item ID to resolve")
-    rq.add_argument("--decision", default="SUPPORTED", help="SemanticDecision (SUPPORTED, PARTIALLY_SUPPORTED)")
+    rq.add_argument("--decision", choices=[d.value for d in SemanticDecision], help="Explicit semantic decision")
     rq.add_argument("--notes", help="Resolution notes or review rationale")
-    rq.add_argument("--reviewer", default="human_expert", help="Reviewer identity")
+    rq.add_argument("--reviewer-type", choices=["ai", "human"], help="Actual reviewer type")
+    rq.add_argument("--reviewer", help="Reviewer identity")
     rq.set_defaults(func=_cmd_review_queue)
 
     finalize = sub.add_parser("finalize", help="Finalize an academic project after resolving review items")

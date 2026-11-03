@@ -571,6 +571,8 @@ def build_quantitative_review_workbook(
     _require_template(wb)
 
     master = wb[SHEET_NAMES[0]]
+    if not selected:
+        master.cell(2, 1).value = "Belum ada sumber artikel yang tercatat untuk pekerjaan ini."
     master_footer = _extend_data_block(master, data_start=6, footer_start=46, count=len(selected), base_rows=(6, 7))
     for index, record in enumerate(selected, 1):
         row = 5 + index
@@ -596,6 +598,8 @@ def build_quantitative_review_workbook(
         ]
         for col, value in enumerate(values, 1):
             master.cell(row, col).value = value
+            if isinstance(value, str):
+                master.cell(row, col).data_type = "s"
         for col in (14, 15, 16):
             value = master.cell(row, col).value
             if isinstance(value, str):
@@ -645,6 +649,8 @@ def build_quantitative_review_workbook(
         ]
         for col, value in enumerate(values, 1):
             ranking.cell(row, col).value = value
+            if isinstance(value, str):
+                ranking.cell(row, col).data_type = "s"
 
     counts = _counts(selected, ranked, summary, None, require_free_full_text=require_free_full_text)
     for row in range(12, 16):
@@ -765,4 +771,5 @@ def update_workflow_report(result: dict, run_summary: dict) -> None:
     manifest["artifacts"] = run_summary["artifacts"]
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     summary_path = Path(run_summary["quantitative_workbook_path"]).parent.parent / "run_summary.json"
-    summary_path.write_text(json.dumps(run_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    from src.workflows.audit_trail import write_run_summary
+    write_run_summary(summary_path.parent, run_summary)

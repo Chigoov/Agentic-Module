@@ -36,11 +36,9 @@ def dedupe_key(source: Source) -> str:
     if doi:
         return f"doi:{doi}"
 
-    isbn = getattr(source, "isbn", None)
+    isbn = _isbn(source)
     if isbn:
-        clean_isbn = re.sub(r"[^0-9X]", "", str(isbn).upper())
-        if len(clean_isbn) in {10, 13}:
-            return f"isbn:{clean_isbn}"
+        return f"isbn:{isbn}"
 
     prov = getattr(source, "provider", None)
     prov_id = getattr(source, "provider_record_id", None)
@@ -51,6 +49,15 @@ def dedupe_key(source: Source) -> str:
     first_author = source.authors[0].strip().lower() if source.authors else ""
     year = source.year if source.year is not None else ""
     return f"title:{title}|{first_author}|{year}"
+
+
+def _isbn(source: Source) -> str | None:
+    value = re.sub(r"[^0-9X]", "", (source.isbn or "").upper())
+    return value if len(value) in {10, 13} else None
+
+
+def _bibliographic_key(source: Source) -> tuple:
+    return (normalize_title(source.title), tuple(a.casefold().strip() for a in source.authors), source.year)
 
 
 def _completeness(source: Source) -> int:
@@ -82,6 +89,7 @@ def _merge(preferred: Source, other: Source) -> Source:
     preferred.year = preferred.year if preferred.year is not None else other.year
     preferred.venue = preferred.venue or other.venue
     preferred.doi = preferred.doi or other.doi
+    preferred.isbn = preferred.isbn or other.isbn
     preferred.url = preferred.url or other.url
     preferred.abstract = preferred.abstract or other.abstract
     if preferred.citation_count is None and other.citation_count is not None:
@@ -98,28 +106,56 @@ def _merge(preferred: Source, other: Source) -> Source:
     return preferred
 
 
-def deduplicate(sources: Iterable[Source]) -> list[Source]:
-    """Return a deduplicated list, keeping the most complete record per key.
+def deduplicate(sources: Iterable[Source], *, identities: dict[str, str | None] | None = None) -> list[Source]:
+    """Merge unambiguous aliases and optionally map input IDs to publication identities.
 
-    Preserves first-seen order. Sources with an identical DOI key are merged
-    first; the fallback title/author/year key catches works that share a title
-    but whose DOI is missing on one side.
+    A missing identifier that matches conflicting identities maps to None.
+    Conflicting DOI/ISBN identities remain separate, including when a record
+    without an identifier arrives before both identified records.
     """
-    by_key: dict[str, Source] = {}
-    order: list[str] = []
-
-    for source in sources:
-        key = dedupe_key(source)
-        if key in by_key:
-            existing = by_key[key]
-            # Keep the more complete record as the representative.
+    records = list(sources)
+    by_key: dict[str, list[int]] = {}
+    by_title: dict[tuple, list[int]] = {}
+    strong: dict[tuple, tuple[set, set]] = {}
+    for source in records:
+        dois, isbns = strong.setdefault(_bibliographic_key(source), (set(), set()))
+        if source.doi:
+            dois.add(normalize_doi(source.doi))
+        if _isbn(source):
+            isbns.add(_isbn(source))
+    result: list[Source] = []
+    input_indexes = {}
+    for source in records:
+        key, secondary = dedupe_key(source), _bibliographic_key(source)
+        candidates = by_key.get(key, [])
+        if not candidates and all(secondary):
+            candidates = by_title.get(secondary, [])
+        matches = [i for i in candidates if not (
+            source.doi and result[i].doi and normalize_doi(source.doi) != normalize_doi(result[i].doi)
+            or _isbn(source) and _isbn(result[i]) and _isbn(source) != _isbn(result[i])
+            or len(strong[secondary][0]) > 1 and normalize_doi(source.doi) != normalize_doi(result[i].doi)
+            or len(strong[secondary][1]) > 1 and _isbn(source) != _isbn(result[i]))]
+        index = matches[0] if len(matches) == 1 else None
+        if index is None:
+            index = len(result)
+            result.append(source)
+            by_title.setdefault(secondary, []).append(index)
+        else:
+            existing = result[index]
             if _completeness(source) > _completeness(existing):
-                _merge(source, existing)
-                by_key[key] = source
+                result[index] = _merge(source, existing)
             else:
                 _merge(existing, source)
-        else:
-            by_key[key] = source
-            order.append(key)
-
-    return [by_key[key] for key in order]
+        for alias_key in (key, dedupe_key(result[index])):
+            indexes = by_key.setdefault(alias_key, [])
+            if index not in indexes:
+                indexes.append(index)
+        input_indexes[source.id] = index
+    if identities is not None:
+        for source in records:
+            representative = result[input_indexes[source.id]]
+            dois, isbns = strong[_bibliographic_key(source)]
+            ambiguous = len(dois) > 1 and not representative.doi or len(isbns) > 1 and not _isbn(representative)
+            identities[source.id] = None if ambiguous else (
+                dedupe_key(representative) if representative.doi or _isbn(representative) else representative.id)
+    return result

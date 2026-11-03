@@ -97,6 +97,7 @@ def test_fact_audit_passes_writable_claim(tmp_path: Path) -> None:
         method="semantic_evaluation",
     )
     fixture_source(source, evidence.evidence_text)
+    review.input_fingerprint = SemanticReview.fingerprint(claim, [evidence], [source])
     response = FactAuditAgent().execute(
         FactAuditRequest(
             project=_project(tmp_path),

@@ -102,6 +102,11 @@ python -m src finalize path\to\project
 
 ## Rules
 
+- Each completed AAI task delivers two Excel files: the supplied standard
+  findings workbook and a concise work report (goal, work, results, obstacles,
+  next steps). Link both paths from the actual response. If no articles were
+  found, say so; never invent rows, scores, or verification. Explain honestly
+  if preflight or another failure prevents file creation.
 - Do not invent sources, DOI, quotes, page numbers, or evidence.
 - Only pass claims/evidence/sources that are already represented in JSON.
 - Academic final outputs must not contain internal ChatGPT/File citation tokens such as `turn...`, `view...`, `search...`, or `filecite`.

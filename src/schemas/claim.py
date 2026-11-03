@@ -16,6 +16,9 @@ is the boundary that prevents fabricated content from reaching the draft.
 from __future__ import annotations
 
 import re
+import hashlib
+import json
+from pathlib import Path
 from datetime import datetime, timezone
 from enum import IntEnum, StrEnum
 
@@ -71,7 +74,40 @@ class SemanticReview(BaseRecord):
     location: str | None = None
     reviewer: str = "antigravity_agent"
     method: str = "semantic_evaluation"
+    reviewer_type: str = Field(default="unspecified", pattern="^(human|ai|unspecified)$")
+    input_fingerprint: str | None = None
+
+    @staticmethod
+    def fingerprint(claim, evidence, sources) -> str:
+        evidence_ids = set(claim.supporting_evidence + claim.contradicting_evidence)
+        items = [e for e in evidence if e.id in evidence_ids]
+        source_ids = {e.source_id for e in items} | set(claim.supporting_sources)
+        payload = {
+            "claim": {k: claim.model_dump(mode="json")[k] for k in
+                ("id", "claim_text", "qualifier", "importance", "required_source_count",
+                 "supporting_sources", "supporting_evidence", "contradicting_evidence")},
+            "evidence": sorted([{k: e.model_dump(mode="json").get(k, getattr(e, k)) for k in
+                ("id", "claim_id", "source_id", "evidence_text", "location", "evidence_type",
+                 "relationship", "strength", "extraction_method")} for e in items], key=lambda e: e["id"]),
+            "sources": sorted([{"id": source.id, "title": source.title, "doi": source.doi,
+                "authors": source.authors, "year": source.year, "abstract": source.abstract,
+                "artifact_sha256": (source.metadata.get("retrieval") or {}).get("sha256")}
+                for source in sources if source.id in source_ids], key=lambda source: source["id"]),
+        }
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @classmethod
+    def load_history(cls, path: Path) -> list[SemanticReview]:
+        """Reject malformed history before callers can overwrite it or clear blockers."""
+        from src.core.storage import read_json
+        if not path.is_file():
+            return []
+        raw = read_json(path)
+        if not isinstance(raw, list):
+            raise ValueError("semantic_reviews.json must contain a list; existing history is preserved")
+        return [cls.model_validate(item) for item in raw]
 
 
 CAUSAL_KEYWORDS = frozenset({

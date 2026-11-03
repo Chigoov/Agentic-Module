@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,22 @@ from src.schemas.source import AccessMode, RetrievalStatus, RightsStatus, Source
 from src.tools.retrieval import RetrievedPayload, RetrievalRequest, RetrievalTool
 
 
+def _pdf_bytes(text: str) -> bytes:
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=300, height=300)
+    font = DictionaryObject({NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"), NameObject("/BaseFont"): NameObject("/Helvetica")})
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})})
+    stream = DecodedStreamObject()
+    stream.set_data(f"BT /F1 12 Tf 50 250 Td ({text}) Tj ET".encode("ascii"))
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 def _make_project(tmp_path: Path) -> Project:
     p_dir = tmp_path / "test_project"
     p_dir.mkdir(parents=True, exist_ok=True)
@@ -21,7 +38,7 @@ def _make_project(tmp_path: Path) -> Project:
 
 def test_direct_download_open_access_book(tmp_path: Path) -> None:
     project = _make_project(tmp_path)
-    sample_content = b"%PDF-1.4 sample content with bytes"
+    sample_content = _pdf_bytes("Open access synthetic book content.")
     expected_hash = hashlib.sha256(sample_content).hexdigest()
 
     source = Source(
@@ -208,9 +225,11 @@ def test_direct_download_backup_on_modified_content(tmp_path: Path) -> None:
         source_type=SourceType.BOOK,
     )
 
+    first_content = _pdf_bytes("Version 1 content")
+    second_content = _pdf_bytes("Version 2 updated content")
     # First download
     first_tool = RetrievalTool(
-        fetcher=lambda url, timeout: RetrievedPayload(content=b"Version 1 content", content_type="application/pdf", final_url=url)
+        fetcher=lambda url, timeout: RetrievedPayload(content=first_content, content_type="application/pdf", final_url=url)
     )
     res1 = first_tool.execute(RetrievalRequest(project=project, source=source, direct_download=True))
     assert res1.success is True
@@ -219,22 +238,22 @@ def test_direct_download_backup_on_modified_content(tmp_path: Path) -> None:
     assert source.state is SourceState.FULLTEXT_RETRIEVED
     doc_path = Path(res1.document_path)
     assert doc_path.exists()
-    assert doc_path.read_bytes() == b"Version 1 content"
+    assert doc_path.read_bytes() == first_content
 
     # Second download with different content and allow_overwrite=False
     second_tool = RetrievalTool(
-        fetcher=lambda url, timeout: RetrievedPayload(content=b"Version 2 updated content", content_type="application/pdf", final_url=url)
+        fetcher=lambda url, timeout: RetrievedPayload(content=second_content, content_type="application/pdf", final_url=url)
     )
     res2 = second_tool.execute(RetrievalRequest(project=project, source=source, direct_download=True, allow_overwrite=False))
     assert res2.success is True
     assert res2.retrieval_method == "direct_download"
-    assert doc_path.read_bytes() == b"Version 2 updated content"
+    assert doc_path.read_bytes() == second_content
     assert source.retrieval_status is RetrievalStatus.RETRIEVED
 
     # Backup was created in the directory
     backups = list(doc_path.parent.glob(f"{doc_path.name}.*.bak"))
     assert len(backups) >= 1
-    assert backups[0].read_bytes() == b"Version 1 content"
+    assert backups[0].read_bytes() == first_content
 
     # Third download with identical content and allow_overwrite=False creates no additional backup
     res3 = second_tool.execute(RetrievalRequest(project=project, source=source, direct_download=True, allow_overwrite=False))
@@ -400,7 +419,7 @@ def test_open_license_with_valid_download_url_allowed(tmp_path: Path) -> None:
         rights_status=RightsStatus.OPEN_LICENSE,
         source_type=SourceType.BOOK,
     )
-    content = b"%PDF-1.4 Open Licensed Content"
+    content = _pdf_bytes("Open Licensed Content")
     expected_hash = hashlib.sha256(content).hexdigest()
 
     tool = RetrievalTool(

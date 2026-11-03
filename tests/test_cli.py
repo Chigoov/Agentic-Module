@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from pathlib import Path
 from conftest import fixture_source
 
@@ -12,6 +13,20 @@ from src.schemas.evidence import Evidence, EvidenceLocation
 from src.schemas.outline import Outline, OutlineSection
 from src.schemas.project import Project
 from src.schemas.source import Source, SourceState
+
+
+@pytest.fixture(autouse=True)
+def portable_cli_workspace(tmp_path, monkeypatch):
+    from src.core.paths import reset_paths_cache
+    from src.core.config import reset_config_cache
+    workspace = tmp_path / "workspaces"
+    (workspace / "TUGAS 1").mkdir(parents=True)
+    monkeypatch.setenv("AUTONOMI_SYSTEM_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("AUTONOMI_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("AUTONOMI__LOGGING__FILE", "false")
+    reset_paths_cache(); reset_config_cache()
+    yield
+    reset_paths_cache(); reset_config_cache()
 
 
 def test_cli_plan_outputs_json(capsys) -> None:
@@ -83,6 +98,8 @@ def test_cli_run_academic_writes_outputs(tmp_path: Path, capsys, monkeypatch) ->
         "method": "semantic_evaluation",
     }
     fixture_source(source, evidence.evidence_text, tmp_path / "source_fixture")
+    from src.schemas.claim import SemanticReview
+    review["input_fingerprint"] = SemanticReview.fingerprint(claim, [evidence], [source])
     payload = {
         "project": project.to_dict(),
         "sources": [source.to_dict()],
@@ -139,8 +156,17 @@ def test_cli_review_queue_inspect_and_resolve(tmp_path: Path, capsys) -> None:
     }
     (project_dir / "fact_audit.json").write_text(json.dumps(fa_payload), encoding="utf-8")
 
+    from src.schemas.claim import Claim
+    from src.schemas.evidence import Evidence
+    from src.schemas.source import Source
+    (project_dir / "claims.json").write_text(json.dumps([Claim(id="clm_1",claim_text="Sample text for clm 1",supporting_evidence=["evd_1"],supporting_sources=["src_1"]).model_dump(mode="json")]),encoding="utf-8")
+    (project_dir / "current_evidence.json").write_text(json.dumps([Evidence(id="evd_1",claim_id="clm_1",source_id="src_1",evidence_text="Sample text for clm 1").model_dump(mode="json")]),encoding="utf-8")
+    (project_dir / "verified_sources.json").write_text(json.dumps([Source(id="src_1",title="Synthetic test").model_dump(mode="json")]),encoding="utf-8")
+    # Missing identity/decision never clears the blocker.
+    assert main(["review-queue",str(project_dir),"--resolve","rev_test_1"]) == 1
+    capsys.readouterr()
     # 2. Resolve
-    assert main(["review-queue", str(project_dir), "--resolve", "rev_test_1", "--notes", "Verified by researcher"]) == 0
+    assert main(["review-queue", str(project_dir), "--resolve", "rev_test_1", "--notes", "Verified by researcher", "--decision", "SUPPORTED", "--reviewer", "synthetic-test-agent", "--reviewer-type", "ai"]) == 0
     out2 = json.loads(capsys.readouterr().out)
     assert out2["success"] is True
     assert out2["resolved_item"]["status"] == "RESOLVED"

@@ -30,11 +30,14 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 from pathlib import Path
+import tempfile
 from typing import Any
 import zipfile
 
 from src.core.storage import ensure_within
+from src.core.errors import PathSafetyError
 
 __all__ = ["export_bundle"]
 
@@ -42,6 +45,7 @@ _RUN_SNAPSHOT_FILES = (
     "run_summary.json",
     "input_snapshot.json",
     "sources_snapshot.json",
+    "findings_sources.json",
     "verified_sources_snapshot.json",
     "claims_snapshot.json",
     "evidence_snapshot.json",
@@ -73,6 +77,12 @@ def export_bundle(
             "error": f"Project directory does not exist: {project_dir}",
         }
 
+    from src.runtime.execution import project_write_lock
+    with project_write_lock(resolved_proj):
+        return _export_bundle_locked(resolved_proj, run_id=run_id, include_failed=include_failed)
+
+
+def _export_bundle_locked(resolved_proj: Path, *, run_id: str | None, include_failed: bool) -> dict[str, Any]:
     runs_dir = resolved_proj / "runs"
     if not runs_dir.exists() or not runs_dir.is_dir():
         return {
@@ -96,6 +106,9 @@ def export_bundle(
         if summary_file.exists():
             try:
                 summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
+                if not isinstance(summary_data, dict):
+                    summary_data = None
+                    raise ValueError("Run summary must be an object")
                 started_at = str(summary_data.get("started_at") or d.name)
             except Exception:  # noqa: BLE001
                 pass
@@ -136,6 +149,29 @@ def export_bundle(
                 "error": f"Failed to parse run_summary.json: {exc}",
             }
 
+    if not isinstance(selected_summary, dict):
+        return {"success": False, "error": "Run summary must be an object"}
+    try:
+        ensure_within(selected_run_dir, resolved_proj)
+        integrity = json.loads((selected_run_dir / "integrity_manifest.json").read_text(encoding="utf-8"))
+        if integrity.get("version") != 1 or integrity.get("run_id") != selected_run_id:
+            raise ValueError("unsupported or mismatched run integrity manifest")
+        sealed_files = integrity["files"]
+        if "run_summary.json" not in sealed_files:
+            raise ValueError("run summary is not sealed")
+        actual_files = {p.relative_to(selected_run_dir).as_posix() for p in selected_run_dir.rglob("*")
+                        if p.is_file() and p.relative_to(selected_run_dir).as_posix() not in {".active", "integrity_manifest.json"}}
+        if actual_files != set(sealed_files):
+            raise ValueError("run file inventory changed")
+        for relative, expected in sealed_files.items():
+            if Path(relative).is_absolute():
+                raise ValueError("run integrity paths must be relative")
+            content = ensure_within(relative, selected_run_dir).read_bytes()
+            if len(content) != expected["size"] or hashlib.sha256(content).hexdigest() != expected["sha256"]:
+                raise ValueError(f"run integrity mismatch: {relative}")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, PathSafetyError) as exc:
+        return {"success": False, "error": f"Run integrity validation failed; re-run unsealed legacy runs: {exc}"}
+
     is_success = bool(selected_summary.get("success", False))
     if not is_success and not include_failed:
         return {
@@ -147,13 +183,19 @@ def export_bundle(
     files_to_pack: list[tuple[Path, str]] = []
 
     for artifact in selected_summary.get("artifacts", []) if is_success else []:
-        source_path = ensure_within(Path(artifact["path"]), selected_run_dir)
+        relative = Path(artifact.get("relative_path", ""))
+        if not artifact.get("relative_path") or relative.is_absolute():
+            return {"success": False, "error": "Run artifact requires a relative path; re-run before export"}
+        try:
+            source_path = ensure_within(relative, selected_run_dir)
+        except (ValueError, PathSafetyError) as exc:
+            return {"success": False, "error": str(exc)}
         if not source_path.is_file() or hashlib.sha256(source_path.read_bytes()).hexdigest() != artifact["sha256"]:
             return {"success": False, "error": f"Run artifact integrity mismatch: {source_path}"}
         filename = artifact["name"]
         if filename == "final.docx" and not selected_summary.get("finalization_allowed", False):
             return {"success": False, "error": "Run is not allowed to export a final document"}
-        folder = "review_output" if filename.startswith("quantitative_") else "academic_output"
+        folder = "review_output" if filename.startswith("quantitative_") or filename in {"hasil_temuan.xlsx", "laporan_pekerjaan.xlsx"} else "academic_output"
         files_to_pack.append((source_path, f"{folder}/{filename}"))
     if is_success and not files_to_pack:
         return {"success": False, "error": "Selected run has no immutable output artifacts; re-run before export"}
@@ -174,6 +216,7 @@ def export_bundle(
     for path in (selected_run_dir / "source_artifacts").glob("*"):
         if path.is_file():
             files_to_pack.append((path, "sources/" + path.name))
+    files_to_pack.append((selected_run_dir / "integrity_manifest.json", "run/integrity_manifest.json"))
 
     # Prepare destination exports directory
     exports_dir = resolved_proj / "exports"
@@ -184,39 +227,46 @@ def export_bundle(
     safe_bundle_path = ensure_within(bundle_path, resolved_proj)
 
     # Write archive
+    handle, temporary = tempfile.mkstemp(dir=exports_dir, prefix=".bundle_", suffix=".tmp")
+    os.close(handle)
+    temporary_path = Path(temporary)
+    packed_artifacts = []
     try:
-        with zipfile.ZipFile(safe_bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(temporary_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for src_path, arcname in files_to_pack:
-                safe_src = ensure_within(src_path, resolved_proj)
-                zf.write(safe_src, arcname=arcname)
-        with zipfile.ZipFile(safe_bundle_path, "r") as zf:
+                safe_src = ensure_within(src_path, selected_run_dir)
+                content = safe_src.read_bytes()
+                digest = hashlib.sha256(content).hexdigest()
+                expected = sealed_files.get(safe_src.relative_to(selected_run_dir).as_posix())
+                if expected and (digest != expected["sha256"] or len(content) != expected["size"]):
+                    raise ValueError(f"Run changed during export: {safe_src}")
+                zf.writestr(arcname, content)
+                packed_artifacts.append({"path": str(safe_src), "archive_name": arcname, "sha256": digest, "size": len(content)})
+        with zipfile.ZipFile(temporary_path, "r") as zf:
             bad_member = zf.testzip()
             if bad_member is not None:
                 return {
                     "success": False,
                     "error": f"ZIP checksum test failed for member {bad_member}",
                 }
+        temporary_path.replace(safe_bundle_path)
     except Exception as exc:  # noqa: BLE001
         return {
             "success": False,
             "error": f"Failed to create bundle archive: {exc}",
         }
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
     zip_digest = hashlib.sha256(safe_bundle_path.read_bytes()).hexdigest()
     manifest = {
         "run_id": selected_run_id,
-        "artifacts": [{"path": str(path), "archive_name": arcname, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size} for path, arcname in files_to_pack],
+        "artifacts": packed_artifacts,
         "zip": {"path": str(safe_bundle_path), "sha256": zip_digest, "size": safe_bundle_path.stat().st_size},
     }
     manifest_path = safe_bundle_path.with_suffix(".manifest.json")
     try:
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        original_manifest = selected_summary.get("checksum_manifest_path")
-        if original_manifest:
-            original_path = ensure_within(Path(original_manifest), selected_run_dir)
-            stored = json.loads(original_path.read_text(encoding="utf-8"))
-            stored["zip"] = manifest["zip"]
-            original_path.write_text(json.dumps(stored, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except (OSError, ValueError) as exc:
         return {"success": False, "error": f"Checksum manifest write failed: {exc}", "bundle_path": str(safe_bundle_path)}
 

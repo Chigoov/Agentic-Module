@@ -164,6 +164,8 @@ class BaseTool(ABC, Generic[TRequest, TResponse]):
             return self._failure(error_code=current.value, error_message=message, status=current)
 
         try:
+            from src.runtime.execution import check_workflow_deadline
+            check_workflow_deadline()
             response = self._execute(request)
         except IntegrationError as exc:
             self._logger.warning(

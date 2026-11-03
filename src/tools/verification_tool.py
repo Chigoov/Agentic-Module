@@ -25,7 +25,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from src.core.paths import get_paths
-from src.tools.source_content import stored_metadata
+from src.tools.source_content import sign_verification_snapshot, stored_metadata, _run_cache
 
 from src.core.config import get_config
 from src.core.logging import get_logger
@@ -39,7 +39,18 @@ from src.schemas.verification import (
 )
 from src.tools.crossref import CrossrefTool
 from src.tools.openalex import OpenAlexTool
-from src.tools.source_mapper import best_title_match, normalize_doi
+from src.tools.source_mapper import best_title_match, normalize_doi, normalize_title
+
+
+def _author_key(name: str) -> tuple[str, str]:
+    """Compare surname and given initial; ambiguous naming conventions require review."""
+    if "," in name:
+        surname, given = name.split(",", 1)
+    else:
+        parts = name.split()
+        surname, given = (parts[-1], " ".join(parts[:-1])) if parts else ("", "")
+    normalized = normalize_title(given)
+    return normalize_title(surname), normalized
 
 __all__ = ["VerificationEngine", "VerificationResult"]
 
@@ -87,13 +98,18 @@ class VerificationEngine:
     # ------------------------------------------------------------------ public
     def verify(self, source: Source) -> VerificationResult:
         """Produce a verification report and recommended state for ``source``."""
-        stored = stored_metadata(source)
-        if stored and stored.get("report"):
-            report = VerificationReport.model_validate(stored["report"])
-            if report.source_id == source.id and report.level_status(VerificationLevel.EXISTENCE) == VerificationCheckStatus.PASSED and report.level_status(VerificationLevel.METADATA) == VerificationCheckStatus.PASSED and report.overall_status in {SourceState.METADATA_VERIFIED, SourceState.DOI_VERIFIED, SourceState.PUBLISHER_VERIFIED}:
-                return VerificationResult(report, report.overall_status)
+        # ponytail: engine settings are fixed at construction; consumers enforce current policy.
+        from src.runtime.execution import check_workflow_deadline
+        check_workflow_deadline()
+        cache = _run_cache.get()
+        policy = get_config().verification.model_dump(mode="json")
+        key = ("verification", id(self), source.id, source.title, source.doi, tuple(source.authors), source.year, source.venue,
+               self._enabled, self._match_threshold, self._min_providers, json.dumps(policy, sort_keys=True))
+        if cache is not None and key in cache and stored_metadata(source):
+            return cache[key]
         report = VerificationReport(source_id=source.id, provenance=Provenance(origin="verification_engine"))
         if not self._enabled:
+            self._archive_verification(source)
             report.add_check(self._check(
                 name="engine_enabled",
                 level=VerificationLevel.EXISTENCE,
@@ -103,25 +119,46 @@ class VerificationEngine:
             return VerificationResult(report, SourceState.NEEDS_HUMAN_REVIEW)
 
         # Resolve provider corroborations once, then share across levels.
-        corroborations = self._corroborate(source)
+        records = [(getattr(p, "name", type(p).__name__), self._lookup(source, p)) for p in self._providers]
+        corroborations = [(name, record, self._match_ratio(source.title, record.title))
+            for name, record in records if record is not None
+            and self._match_ratio(source.title, record.title) >= self._match_threshold]
 
         self._verify_existence(source, report)
-        self._verify_metadata(source, report, corroborations)
+        self._verify_metadata(source, report, corroborations, records)
         self._verify_content(source, report)
 
         report.metadata_match_ratio = self._best_match_ratio(corroborations)
         report.overall_status = self._recommend(report)
         if corroborations and report.overall_status in {SourceState.METADATA_VERIFIED, SourceState.DOI_VERIFIED, SourceState.PUBLISHER_VERIFIED}:
             snapshot = {"source_id": source.id, "title": source.title, "doi": source.doi,
+                "authors": source.authors, "year": source.year, "venue": source.venue,
+                "verification_policy": {"enabled": self._enabled, "metadata_match_threshold": self._match_threshold,
+                                        "min_metadata_providers": self._min_providers},
                 "verified_at": datetime.now(timezone.utc).isoformat(), "report": report.to_dict(),
                 "provider_records": [{"provider": name, "record": record.model_dump(mode="json")} for name, record, _ in corroborations]}
+            snapshot = sign_verification_snapshot(snapshot)
             content = json.dumps(snapshot, ensure_ascii=False, sort_keys=True).encode("utf-8")
             digest = hashlib.sha256(content).hexdigest()
             target = get_paths().cache_dir / "verification" / (digest + ".json")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
+            self._archive_verification(source)
             source.metadata["verification_artifact"] = {"path": str(target), "sha256": digest}
-        return VerificationResult(report, report.overall_status)
+        else:
+            self._archive_verification(source)
+        result = VerificationResult(report, report.overall_status)
+        if cache is not None and stored_metadata(source):
+            cache[key] = result
+        return result
+
+    @staticmethod
+    def _archive_verification(source):
+        previous = source.metadata.pop("verification_artifact", None)
+        if previous:
+            history = source.metadata.setdefault("historical_verification_artifacts", [])
+            if previous not in history:
+                history.append(previous)
 
     # ------------------------------------------------------------ corroborate
     def _corroborate(self, source: Source) -> list[tuple[str, Source, float]]:
@@ -187,6 +224,7 @@ class VerificationEngine:
         source: Source,
         report: VerificationReport,
         corroborations: list[tuple[str, Source, float]],
+        records: list[tuple[str, Source | None]],
     ) -> None:
         for name, match, ratio in corroborations:
             report.add_check(self._check(
@@ -201,11 +239,36 @@ class VerificationEngine:
                 report.add_check(self._check(name="metadata_doi_identity", level=VerificationLevel.METADATA,
                     status=self._pass_fail(normalize_doi(source.doi) == normalize_doi(match.doi)),
                     detail=f"DOI corroboration from {name}: {match.doi or 'not available'}", provider=name))
+            for field in ("authors", "year", "venue"):
+                candidate, actual = getattr(source, field), getattr(match, field)
+                if candidate and actual:
+                    if field == "authors":
+                        left, right = sorted(map(_author_key, candidate)), sorted(map(_author_key, actual))
+                        same = len(left) == len(right) and all(a[0] == b[0] and
+                            (a[1] == b[1] or min(len(a[1]), len(b[1])) == 1 and a[1][:1] == b[1][:1])
+                            for a, b in zip(left, right))
+                    elif field == "year":
+                        online = (match.metadata.get("published-online") or {}).get("date-parts", [])
+                        same = candidate == actual or bool(online and online[0] and candidate == online[0][0])
+                    else:
+                        same = normalize_title(candidate) == normalize_title(actual)
+                    report.add_check(self._check(name=f"metadata_{field}_match", level=VerificationLevel.METADATA,
+                        status=self._pass_fail(same), detail=f"{field} compared with {name}; conflicts require review", provider=name))
+            updates = match.metadata.get("update-to") or []
+            flagged = match.metadata.get("is_retracted") or any(u.get("type") in {"retraction", "correction", "erratum"} for u in updates if isinstance(u, dict))
+            if flagged:
+                source.metadata["publication_status"] = "review_required"
+                report.add_check(self._check(name="publication_update", level=VerificationLevel.METADATA,
+                    status=VerificationCheckStatus.FAILED, detail="Provider reports retraction/correction; assess before use", provider=name))
+            else:
+                source.metadata.setdefault("publication_status", "not_checked")
         # Material identity mismatch (audit A03): the candidate may carry a DOI
         # or title whose provider record names a different work. Corroboration
         # is *not* optional here — the provider records retrieved during lookup
         # are re-checked so a wrong-article DOI is reported, never backfilled.
-        for name, mismatch in self._identity_mismatches(source):
+        for name, mismatch in records:
+            if mismatch is None or self._match_ratio(source.title, mismatch.title) >= self._match_threshold:
+                continue
             report.add_check(self._check(
                 name="metadata_identity_match",
                 level=VerificationLevel.METADATA,
@@ -260,6 +323,8 @@ class VerificationEngine:
         return self._fetch_record(source, provider)
     def _fetch_record(self, source: Source, provider: Any) -> Source | None:
         """Fetch the provider record for a DOI or bibliographic lookup."""
+        if not getattr(provider, "is_available", lambda: True)():
+            return None
         if source.doi:
             lookup = getattr(provider, "lookup_by_doi", None)
             if callable(lookup):
